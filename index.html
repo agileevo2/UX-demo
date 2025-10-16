@@ -1,0 +1,3436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AlphaTek Dual-Screen Demo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        /* --- GRUNNLEGGENDE OPPSETT FOR DEMO --- */
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            background-color: #050607;
+            color: #f0f0f0;
+            font-family: 'Inter', sans-serif;
+            overflow: hidden; /* Forhindrer scrolling på hovedsiden */
+        }
+
+        .demo-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 40px;
+            padding: 20px;
+            height: 100vh;
+            box-sizing: border-box;
+        }
+
+        /* --- STYLING FOR MOBIL-CONTAINER --- */
+        #phone-container {
+            width: 390px;
+            height: 844px;
+            border: 10px solid #111;
+            border-radius: 40px;
+            box-shadow: 0 0 30px rgba(0,0,0,0.5);
+            overflow: hidden;
+            position: relative;
+            background-color: #000; /* Start black */
+            flex-shrink: 0;
+            transition: background-color 0.5s ease-in-out;
+        }
+        
+        #phone-container.awake {
+             background-color: #0a0c0e;
+        }
+
+        #phone-container #app-container,
+        #phone-container #main-nav {
+            display: none;
+        }
+
+        #phone-container.awake #app-container {
+             display: block;
+        }
+        
+        #phone-container.awake #main-nav {
+            display: flex; /* Will be further controlled by render() */
+        }
+
+
+        /* --- STYLING FOR TV-CONTAINER --- */
+        #tv-container {
+            width: 540px;  /* Skalert ned fra 1080px */
+            height: 960px; /* Skalert ned fra 1920px */
+            aspect-ratio: 9 / 16;
+            border: 18px solid #181818;
+            border-radius: 10px;
+            background-color: #000;
+            box-shadow: 0 0 50px rgba(0,0,0,0.6);
+            overflow: hidden;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-shrink: 0;
+        }
+        
+        #tv-screen {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            background-color: #0a0c0e;
+            color: white;
+            font-family: 'Inter', sans-serif;
+        }
+        
+        /* --- TV-SKJERM VISNINGER --- */
+        .tv-view {
+            display: none;
+            position: absolute;
+            inset: 0;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            box-sizing: border-box;
+            text-align: center;
+            animation: tvFadeIn 0.5s ease-in-out;
+        }
+
+        .tv-view.active {
+            display: flex;
+        }
+
+        @keyframes tvFadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        /* Frosted Glass Effect for Idle Screen */
+        #frost-overlay {
+            position: absolute;
+            inset: 0;
+            z-index: 2;
+            background: rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            opacity: 0;
+            transition: opacity 0.5s ease-in-out;
+            pointer-events: none;
+        }
+
+        #tv-idle.active {
+            display: block; /* For positioning context */
+        }
+        
+        #tv-container.protocol-started #qr-container,
+        #tv-container.protocol-started #frost-overlay {
+            display: none;
+        }
+
+
+        #qr-container {
+            position: absolute;
+            z-index: 3;
+            top: 38.2%; /* Golden Ratio */
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            opacity: 0;
+            transition: opacity 0.5s ease-in-out;
+        }
+
+        #tv-container.is-showing-qr #frost-overlay,
+        #tv-container.is-showing-qr #qr-container {
+            opacity: 1;
+        }
+
+
+        .tv-view video {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            z-index: 1;
+        }
+
+        .tv-view .content-overlay {
+            position: relative;
+            z-index: 2;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 20px 40px;
+            border-radius: 20px;
+        }
+
+        .tv-view .big-text {
+            font-size: 4rem;
+            font-weight: 700;
+            line-height: 1.1;
+            letter-spacing: -2px;
+        }
+
+        .tv-view .sub-text {
+            font-size: 1.5rem;
+            color: #d1d5db; /* gray-300 */
+            margin-top: 10px;
+        }
+        
+        .tv-view .test-name {
+            font-size: 2.5rem;
+            font-weight: 600;
+            color: #10b981; /* emerald-500 */
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-top: 20px;
+        }
+        
+        .result-value {
+             font-family: 'monospace';
+             font-size: 10rem;
+             color: #34d399; /* emerald-400 */
+             font-weight: bold;
+             line-height: 1;
+             text-shadow: 0 0 20px rgba(52, 211, 153, 0.5);
+        }
+
+        .result-unit {
+             font-size: 2rem;
+             color: #a3a3a3;
+             margin-left: 10px;
+        }
+        
+        /* --- Calibration Screen Styles --- */
+        #tv-calibration {
+            background-color: #000000;
+            width: 100%;
+            height: 100%;
+            padding: 40px;
+        }
+        #tv-calibration #dot-animation {
+            display: inline-block; 
+            width: 1.5em;
+            text-align: left;
+        }
+        #tv-calibration .pie-chart-container {
+            width: 22.5rem; /* 360px */
+            height: 22.5rem; /* 360px */
+            border-radius: 50%;
+            background: #2D2D2D;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 0 40px rgba(0, 0, 0, 0.5);
+        }
+        #tv-calibration .pie-chart {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background: conic-gradient(#FBC02D 0deg, #2D2D2D 0deg);
+            position: relative; 
+            transition: background 0.1s linear; 
+        }
+        #tv-calibration .pie-chart::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 16rem; /* 256px */
+            height: 16rem; /* 256px */
+            border-radius: 50%;
+            background: black;
+            z-index: 10;
+        }
+
+
+        /* --- MOBILKODE STILER (fra din fil) --- */
+        #phone-container .view { display: none; }
+        #phone-container .view.active { display: block; }
+        #phone-container .nav-item.active { color: #10b981; }
+        #phone-container .nav-item.active i { color: #10b981; }
+        
+        #phone-container .fade-in-slow { animation: fadeIn 0.8s ease-in-out; }
+
+        #phone-container .fade-in { animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        #phone-container .slide-up { animation: slideUp 0.3s ease-out; }
+        @keyframes slideUp {
+            from { transform: translateY(100%); }
+            to { transform: translateY(0); }
+        }
+        #phone-container .slide-down { animation: slideDown 0.3s ease-out; }
+        @keyframes slideDown {
+            from { transform: translateY(-100%); }
+            to { transform: translateY(0); }
+        }
+        #phone-container .brand-glow-green { box-shadow: 0 0 30px rgba(52, 211, 153, 0.4); }
+        #phone-container .brand-glow-red { box-shadow: 0 0 30px rgba(239, 68, 68, 0.4); }
+        #phone-container .brand-glow-blue { box-shadow: 0 0 30px rgba(59, 130, 246, 0.4); }
+        #phone-container .brand-glow-yellow { box-shadow: 0 0 30px rgba(234, 179, 8, 0.4); }
+        #phone-container input[type="datetime-local"]::-webkit-calendar-picker-indicator { filter: invert(1) brightness(0.8); }
+        #phone-container .input-btn.selected { background-color: #10b981; border-color: #10b981; color: white; }
+        #phone-container .gender-btn.selected { background-color: #10b981; border-color: #10b981; color: white; }
+        #phone-container .star-rating svg { color: #4b5563; fill: transparent; stroke-width: 1.5; }
+        #phone-container .star-rating svg.filled { color: #f59e0b; fill: #f59e0b; }
+        #phone-container select { -webkit-appearance: none; -moz-appearance: none; appearance: none; }
+        #phone-container details > summary { list-style: none; }
+        #phone-container details > summary::-webkit-details-marker { display: none; }
+        #phone-container details[open] > summary .lucide-chevron-down { transform: rotate(180deg); }
+
+    </style>
+</head>
+<body>
+
+    <div class="demo-container">
+        <div id="phone-container" class="asleep">
+            <div id="app-container" class="min-h-screen pb-24 bg-[#0a0c0e] text-gray-100 fade-in-slow" style="height: 100%; overflow-y: auto;">
+        
+                <div id="protocols-view" class="view fade-in">
+                    <div class="w-full sticky top-0 z-40 bg-[#0b0d0f] border-b border-gray-800">
+                        <div class="max-w-sm mx-auto px-4 py-3 flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <img src="https://storage.googleapis.com/files_webpage/narrow.png" alt="Alphatek" class="h-5 w-auto" />
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <button class="p-2 rounded-full bg-gray-800/50 text-gray-300 border border-gray-700">
+                                    <i data-lucide="moon" class="w-4 h-4"></i>
+                                </button>
+                                <button class="burger-menu-btn p-2 rounded-full bg-gray-800/50 text-gray-300 border border-gray-700">
+                                    <i data-lucide="menu" class="w-4 h-4"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="protocols-content-container" class="max-w-sm mx-auto px-4 mt-4 space-y-4">
+                        </div>
+                </div>
+
+                <div id="remote-view" class="view fade-in">
+                    <div class="w-full sticky top-0 z-40 bg-[#0b0d0f] border-b border-gray-800">
+                        <div class="max-w-sm mx-auto px-4 py-3 flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <img src="https://storage.googleapis.com/files_webpage/narrow.png" alt="Alphatek" class="h-5 w-auto" />
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <button class="p-2 rounded-full bg-gray-800/50 text-gray-300 border border-gray-700">
+                                    <i data-lucide="moon" class="w-4 h-4"></i>
+                                </button>
+                                <button class="burger-menu-btn p-2 rounded-full bg-gray-800/50 text-gray-300 border border-gray-700">
+                                    <i data-lucide="menu" class="w-4 h-4"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="remote-content-container" class="max-w-sm mx-auto px-4 pt-6 pb-3">
+                        </div>
+                </div>
+
+                <div id="clients-view" class="view fade-in">
+                    <div class="w-full sticky top-0 z-40 bg-[#0b0d0f] border-b border-gray-800">
+                        <div class="max-w-sm mx-auto px-4 py-3 flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <img src="https://storage.googleapis.com/files_webpage/narrow.png" alt="Alphatek" class="h-5 w-auto" />
+                            </div>
+                            <h2 class="text-white text-lg font-semibold tracking-tight">History</h2>
+                            <div class="flex items-center gap-2">
+                                <button class="p-2 rounded-full bg-gray-800/50 text-gray-300 border border-gray-700">
+                                    <i data-lucide="moon" class="w-4 h-4"></i>
+                                </button>
+                                <button class="burger-menu-btn p-2 rounded-full bg-gray-800/50 text-gray-300 border border-gray-700">
+                                    <i data-lucide="menu" class="w-4 h-4"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="clients-content-container" class="max-w-sm mx-auto px-4 pt-6 pb-3">
+                        </div>
+                </div>
+
+                <div id="returntoplay-input-view" class="view">
+                    </div>
+
+                <div id="shouldertest-input-view" class="view">
+                    </div>
+
+                <div id="coachMode-view" class="view">
+                    </div>
+
+                <div id="results-view" class="view">
+                    </div>
+                
+                <div id="clientDetail-view" class="view">
+                    </div>
+
+            </div>
+
+            <nav id="main-nav" class="absolute bottom-0 left-0 right-0 z-30 bg-[#0b0d0f] border-t border-gray-800">
+                <div class="max-w-sm mx-auto flex justify-center gap-x-[50px]">
+                    <button id="nav-protocols" class="nav-item active flex flex-col items-center p-3 text-gray-300">
+                        <i data-lucide="list-checks" class="w-5 h-5 mb-1"></i>
+                        <span class="text-xs">Protocols</span>
+                    </button>
+                    <button id="nav-remote" class="nav-item flex flex-col items-center p-3 text-gray-300">
+                        <i data-lucide="tv-2" class="w-5 h-5 mb-1"></i>
+                        <span class="text-xs">Remote</span>
+                    </button>
+                    <button id="nav-clients" class="nav-item flex flex-col items-center p-3 text-gray-300">
+                        <i data-lucide="users" class="w-5 h-5 mb-1"></i>
+                        <span class="text-xs">History</span>
+                    </button>
+                </div>
+            </nav>
+            
+            <div id="add-client-modal" class="hidden absolute inset-0 z-50 bg-black/60 backdrop-blur flex items-end">
+                <div class="w-full max-w-sm mx-auto bg-[#0b0d0f] border-t border-gray-800 rounded-t-2xl p-4 slide-up">
+                    <div class="flex justify-between items-center mb-3">
+                        <h2 class="text-white font-semibold text-lg">Add New Client</h2>
+                        <button onclick="closeAddClientModal()" class="p-2 rounded-full text-gray-300 hover:bg-white/10">
+                            <i data-lucide="x" class="w-5 h-5"></i>
+                        </button>
+                    </div>
+                    <p class="text-gray-400 text-sm mb-4">Enter the new client's details to create and link them to the session.</p>
+                    
+                    <div class="space-y-4">
+                        <div>
+                            <label class="text-sm text-gray-400 mb-2 block">Gender</label>
+                            <div id="gender-selector" class="grid grid-cols-3 gap-2">
+                                <button data-gender="Male" class="gender-btn bg-[#1a1c1f] border border-gray-700 text-gray-100 py-2 rounded-lg transition">Male</button>
+                                <button data-gender="Female" class="gender-btn bg-[#1a1c1f] border border-gray-700 text-gray-100 py-2 rounded-lg transition">Female</button>
+                                <button data-gender="Other" class="gender-btn bg-[#1a1c1f] border border-gray-700 text-gray-100 py-2 rounded-lg transition">Other</button>
+                            </div>
+                        </div>
+                        <div>
+                            <label for="add-client-age" class="text-sm text-gray-400 mb-1 block">Age</label>
+                            <input id="add-client-age" type="number" placeholder="e.g., 34" class="w-full px-3 py-2 rounded-xl bg-[#101214] border border-gray-700 text-gray-100 placeholder-gray-500" />
+                        </div>
+                        <div>
+                            <label for="add-client-phone" class="text-sm text-gray-400 mb-1 block">Phone Number</label>
+                            <div class="relative">
+                                <span class="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">+47</span>
+                                <input id="add-client-phone" type="tel" placeholder="912 34 567" class="w-full px-3 py-2 rounded-xl bg-[#101214] border border-gray-700 text-gray-100 placeholder-gray-500 pl-14" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <button id="create-and-link-btn" disabled class="mt-6 w-full px-4 py-3 rounded-xl border border-emerald-500/40 text-emerald-300 bg-emerald-900/30 opacity-50 cursor-not-allowed">Create & Link Client</button>
+                </div>
+            </div>
+            
+            <div id="burger-menu-modal" class="hidden absolute inset-0 z-50">
+                <div id="burger-menu-backdrop" class="absolute inset-0 bg-black/60"></div>
+                <div class="absolute top-16 right-4 w-60 bg-[#1a1c1f] border border-gray-800 rounded-xl shadow-lg p-2 fade-in">
+                    <div class="space-y-1">
+                        <button class="w-full flex justify-between items-center px-3 py-2 text-left text-sm text-gray-100 rounded-md hover:bg-white/10">
+                            <span>Preferences</span>
+                            <i data-lucide="settings" class="w-4 h-4 text-gray-300"></i>
+                        </button>
+                        <button class="w-full flex justify-between items-center px-3 py-2 text-left text-sm text-red-400 rounded-md hover:bg-red-500/10">
+                            <span>Sign out</span>
+                            <i data-lucide="log-out" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="toolbox-modal" class="hidden absolute inset-0 z-50 bg-black/60 backdrop-blur flex items-end">
+                <div class="w-full max-w-sm mx-auto bg-[#0b0d0f] border-t-2 border-emerald-500/50 rounded-t-2xl p-4 slide-up">
+                    <h3 class="text-lg font-bold text-center mb-4 text-white">Toolbox</h3>
+                    <div class="flex flex-col gap-2">
+                        <button class="bg-[#1a1c1f] border border-gray-700 text-white p-3 rounded-lg text-left transition hover:bg-white/5">Show Coaching Checklist</button>
+                        <button class="bg-[#1a1c1f] border border-gray-700 text-white p-3 rounded-lg text-left transition hover:bg-white/5">Show Client History</button>
+                        <button class="bg-[#1a1c1f] border border-gray-700 text-white p-3 rounded-lg text-left transition hover:bg-white/5">Replay Instruction Video</button>
+                        <button onclick="closeToolboxModal()" class="bg-red-600/20 border border-red-500/30 text-red-300 p-3 rounded-lg mt-4 transition hover:bg-red-600/30">Close</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="schedule-modal" class="hidden absolute inset-0 z-50 bg-black/60 backdrop-blur flex items-end">
+                <div class="w-full max-w-sm mx-auto bg-[#0b0d0f] border-t border-gray-800 rounded-t-2xl p-4 slide-up">
+                    <div class="flex justify-between items-center mb-3">
+                        <h2 class="text-white font-semibold text-lg">Schedule Next Session</h2>
+                        <button onclick="closeScheduleModal()" class="p-2 rounded-full text-gray-300 hover:bg-white/10">
+                            <i data-lucide="x" class="w-5 h-5"></i>
+                        </button>
+                    </div>
+                    <p class="text-gray-400 text-sm mb-3">Select a time and date for the follow-up session.</p>
+                    <input id="session-datetime" type="datetime-local" class="w-full px-3 py-2 rounded-xl bg-[#101214] border border-gray-700 text-gray-100 placeholder-gray-500 mb-3" />
+                    <div class="space-y-3 mt-4">
+                        <button onclick="handleScheduleNow()" class="w-full bg-emerald-600 text-white font-bold py-3 rounded-xl transition hover:bg-emerald-500">
+                            Schedule & Notify
+                        </button>
+                        <button onclick="handleScheduleLater()" class="w-full bg-gray-600 text-white font-bold py-3 rounded-xl transition hover:bg-gray-500">
+                            Schedule Later
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="analysis-modal" class="hidden absolute inset-0 z-50 bg-black/60 backdrop-blur flex items-center justify-center p-4">
+                <div class="w-full max-w-sm mx-auto bg-[#0b0d0f] border border-gray-800 rounded-2xl p-4 slide-up">
+                    <div class="flex justify-between items-center mb-3">
+                        <h2 id="analysis-modal-title" class="text-white font-semibold text-lg">Analysis</h2>
+                        <button onclick="closeAnalysisModal()" class="p-2 rounded-full text-gray-300 hover:bg-white/10">
+                            <i data-lucide="x" class="w-5 h-5"></i>
+                        </button>
+                    </div>
+                    <div>
+                        <canvas id="analysis-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div id="link-client-modal" class="hidden absolute inset-x-0 top-0 z-50">
+                <div id="link-client-backdrop" class="absolute inset-0 bg-black/60 backdrop-blur"></div>
+                <div class="relative w-full max-w-sm mx-auto bg-[#0b0d0f] border-b border-gray-800 rounded-b-2xl p-4 shadow-2xl slide-down">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-white font-semibold text-lg">Link Client to Session</h2>
+                        <div class="flex items-center gap-2">
+                            <button onclick="openAddClientModalAndCloseLinkModal()" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-sm inline-flex items-center gap-2">
+                                <i data-lucide="plus" class="w-4 h-4"></i> New
+                            </button>
+                            <button onclick="closeLinkClientModal()" class="p-2 rounded-full text-gray-300 hover:bg-white/10">
+                                <i data-lucide="x" class="w-5 h-5"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="relative">
+                        <i data-lucide="search" class="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5"></i>
+                        <input id="modal-client-search-input" type="text" placeholder="Name or phone number..." class="w-full bg-[#101214] border border-gray-700 rounded-xl py-3 pl-12 pr-4 text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                    </div>
+                    <div id="modal-client-search-results" class="mt-4 space-y-2 max-h-64 overflow-y-auto">
+                        </div>
+                </div>
+            </div>
+
+            <div id="history-modal" class="hidden absolute inset-x-0 top-0 z-50">
+                <div id="history-backdrop" class="absolute inset-0 bg-black/60 backdrop-blur"></div>
+                <div class="relative w-full max-w-sm mx-auto bg-[#0b0d0f] border-b border-gray-800 rounded-b-2xl p-4 shadow-2xl slide-down">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 id="history-modal-title" class="text-white font-semibold text-lg">Test History</h2>
+                        <button onclick="closeHistoryModal()" class="p-2 rounded-full text-gray-300 hover:bg-white/10">
+                            <i data-lucide="x" class="w-5 h-5"></i>
+                        </button>
+                    </div>
+                    <div id="history-modal-content" class="space-y-2 max-h-96 overflow-y-auto">
+                        </div>
+                </div>
+            </div>
+
+
+            <div id="toast-notification" class="hidden absolute inset-0 z-50 bg-black/60 backdrop-blur items-center justify-center p-4">
+                <div class="bg-[#1a1c1f] border border-gray-800 rounded-2xl p-6 shadow-lg text-center text-sm w-full max-w-xs slide-up">
+                    <div id="toast-icon-container" class="mx-auto mb-4">
+                        </div>
+                    <p id="toast-message" class="text-gray-100 mb-6"></p>
+                    <button id="toast-dismiss-btn" class="w-full bg-emerald-600 text-white font-bold py-2 rounded-lg transition hover:bg-emerald-500">
+                        OK
+                    </button>
+                </div>
+            </div>
+            
+            <div id="confirmation-modal" class="hidden absolute inset-0 z-50 bg-black/60 backdrop-blur flex items-center justify-center p-4">
+                <div class="bg-[#1a1c1f] border border-gray-800 rounded-2xl p-6 shadow-lg text-center text-sm w-full max-w-xs slide-up">
+                    <div class="mx-auto mb-4">
+                        <div class="w-12 h-12 rounded-full bg-yellow-500/20 flex items-center justify-center mx-auto"><i data-lucide="alert-triangle" class="w-8 h-8 text-yellow-400"></i></div>
+                    </div>
+                    <p id="confirmation-message" class="text-white mb-6"></p>
+                    <div class="flex gap-4">
+                        <button id="confirmation-cancel-btn" class="flex-1 w-full bg-gray-600 text-white font-bold py-2 rounded-lg transition hover:bg-gray-500">
+                            Cancel
+                        </button>
+                        <button id="confirmation-confirm-btn" class="flex-1 w-full bg-red-600 text-white font-bold py-2 rounded-lg transition hover:bg-red-500">
+                            Confirm
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="tv-container">
+            <div id="tv-screen">
+                <div id="tv-idle" class="tv-view active">
+                    <video src="https://storage.googleapis.com/files_webpage/Exercise%20videos/Alphatatek%20-%20Shoulder%20Test%20-%204k.MP4" autoplay loop muted playsinline></video>
+                    <div id="frost-overlay"></div>
+                    <div id="qr-container">
+                        <img src="https://storage.googleapis.com/files_webpage/Exercise%20videos/QR.png" alt="QR Code" class="w-32 h-32 rounded-lg mx-auto mb-3" />
+                        <p class="text-white font-semibold">Scan to get started</p>
+                    </div>
+                </div>
+                
+                <div id="tv-fullscreen-video" class="tv-view">
+                    <video id="fullscreen-video-player" muted></video>
+                </div>
+
+                <div id="tv-calibration" class="tv-view">
+                    <div class="mb-32 text-center text-yellow-400">
+                         <h1 class="text-6xl font-extrabold tracking-tight uppercase">
+                            CALIBRATING<span id="dot-animation"></span>
+                         </h1>
+                    </div>
+                    <div class="pie-chart-container">
+                        <div class="pie-chart" id="pie-chart"></div>
+                    </div>
+                    <p id="progress-text" class="text-3xl font-light mt-20 text-gray-400">0% complete</p>
+                </div>
+
+                <div id="tv-client-linked" class="tv-view">
+                     <video src="https://storage.googleapis.com/files_webpage/Exercise%20videos/Alphatatek%20-%20Shoulder%20Test%20-%204k.MP4" autoplay loop muted playsinline></video>
+                </div>
+                
+                <div id="tv-instruction" class="tv-view">
+                    <video id="tv-instruction-video" src="" autoplay loop muted playsinline></video>
+                    <div class="content-overlay" style="margin-top: auto; margin-bottom: 40px; text-align: left; width: 90%;">
+                        <p class="sub-text">Next Test</p>
+                        <p id="tv-instruction-title" class="big-text">Test Name</p>
+                        <ol id="tv-instruction-steps" class="list-decimal list-inside text-gray-200 space-y-2 mt-4 text-xl">
+                            </ol>
+                    </div>
+                </div>
+
+                <div id="tv-testing" class="tv-view">
+                    <video id="tv-testing-video" class="hidden" autoplay loop muted playsinline></video>
+                    <div id="tv-testing-generic" class="w-full">
+                        <div class="content-overlay">
+                            <p class="big-text">Test in Progress</p>
+                            <p class="test-name" id="tv-testing-name">PULL</p>
+                        </div>
+                        <div class="absolute bottom-10 w-full px-10">
+                            <div class="w-full bg-gray-700 rounded-full h-2.5">
+                                <div class="bg-emerald-500 h-2.5 rounded-full animate-pulse" style="width: 100%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+
+                <div id="tv-result" class="tv-view">
+                    <p class="sub-text">Result</p>
+                    <div>
+                        <span id="tv-result-value" class="result-value">0.0</span>
+                        <span id="tv-result-unit" class="result-unit">kg</span>
+                    </div>
+                    <p class="test-name" id="tv-result-name">PULL</p>
+                </div>
+
+                <div id="tv-summary" class="tv-view">
+                    <!-- Default Summary -->
+                    <div id="tv-summary-default">
+                        <p class="big-text">Session Complete!</p>
+                        <p class="sub-text">Your results are ready.</p>
+                        <div id="tv-summary-content" class="mt-8 text-2xl bg-gray-800/50 p-8 rounded-lg">
+                        </div>
+                    </div>
+                    <!-- Fitness Age Image -->
+                    <div id="tv-summary-fitness-age" class="hidden w-full h-full">
+                         <img src="https://storage.googleapis.com/files_webpage/Mockups/ChatGPT%20Image%2017.%20okt.%202025%2C%2000_01_05.png" alt="Fitness Age Result" class="w-full h-full object-cover">
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+    
+    <script>
+    // --- NY KODE FOR TV-SKJERM KONTROLL ---
+    
+    const TV_ASSETS = {
+        'Pull': {
+            instruction: 'https://storage.googleapis.com/files_webpage/Instruction%20video%20(demo)/Pull.mp4',
+            test: 'https://storage.googleapis.com/files_webpage/Exercise%20videos/Pull%201080x1920.mp4'
+        },
+        'Jump': {
+            instruction: 'https://storage.googleapis.com/files_webpage/Instruction%20video%20(demo)/Jump.mp4',
+            test: 'https://storage.googleapis.com/files_webpage/Exercise%20videos/Jump%201080x1920.mp4'
+        },
+        'Balance Right': {
+            instruction: 'https://storage.googleapis.com/files_webpage/Instruction%20video%20(demo)/Balance%20right.mp4',
+            test: 'https://storage.googleapis.com/files_webpage/Exercise%20videos/1080x1920%20Balance.mp4'
+        },
+        'Balance Left': {
+            instruction: 'https://storage.googleapis.com/files_webpage/Instruction%20video%20(demo)/Balance%20left.mp4',
+            test: 'https://storage.googleapis.com/files_webpage/Exercise%20videos/1080x1920%20Balance.mp4'
+        },
+        'Default': {
+             instruction: 'https://storage.googleapis.com/files_webpage/alphatek_bg_video.mp4',
+             test: 'https://storage.googleapis.com/files_webpage/alphatek_bg_video.mp4'
+        }
+    };
+
+
+    function updateTvScreen(view, data = {}) {
+        document.querySelectorAll('.tv-view').forEach(v => v.classList.remove('active'));
+        const targetView = document.getElementById(`tv-${view}`);
+        
+        if (targetView) {
+            switch (view) {
+                case 'idle':
+                case 'client-linked':
+                    break;
+                case 'fullscreen-video':
+                    const player = document.getElementById('fullscreen-video-player');
+                    player.src = data.src || '';
+                    player.loop = data.loop || false;
+                    player.muted = true; // Always mute background videos
+                    player.play();
+                    break;
+                 case 'calibration':
+                    runCalibrationAnimation(3700, () => {
+                        if (state.fitnessAgeFlowState === 'calibrating') {
+                            state.fitnessAgeFlowState = 'pullInstruction';
+                            // This now uses the asset map
+                            updateTvScreen('fullscreen-video', { 
+                                src: TV_ASSETS['Pull'].instruction, 
+                                loop: true 
+                            });
+                            render(); // Update phone button to be active
+                        }
+                    });
+                    break;
+                case 'instruction':
+                    const testName = data.testName || 'Unknown Test';
+                    const asset = TV_ASSETS[testName] || TV_ASSETS['Default'];
+                    const instructions = instructionsData[testName] || ['Follow instructions from your trainer.'];
+                    
+                    document.getElementById('tv-instruction-title').textContent = testName;
+                    document.getElementById('tv-instruction-video').src = asset.instruction;
+                    
+                    const stepsContainer = document.getElementById('tv-instruction-steps');
+                    stepsContainer.innerHTML = instructions.map(step => `<li>${step}</li>`).join('');
+                    break;
+                case 'testing':
+                    const testingVideo = document.getElementById('tv-testing-video');
+                    const genericTestingView = document.getElementById('tv-testing-generic');
+
+                    if (data.videoSrc) {
+                        testingVideo.src = data.videoSrc;
+                        testingVideo.loop = data.loop || false;
+                        testingVideo.classList.remove('hidden');
+                        genericTestingView.classList.add('hidden');
+                        testingVideo.play();
+                    } else {
+                        testingVideo.classList.add('hidden');
+                        genericTestingView.classList.remove('hidden');
+                        document.getElementById('tv-testing-name').textContent = data.testName || '';
+                    }
+                    break;
+                case 'result':
+                    document.getElementById('tv-result-name').textContent = data.testName || '';
+                    document.getElementById('tv-result-value').textContent = data.result.value || '0.0';
+                    document.getElementById('tv-result-unit').textContent = data.result.unit || '';
+                    break;
+                case 'summary':
+                    const defaultSummary = document.getElementById('tv-summary-default');
+                    const fitnessAgeSummary = document.getElementById('tv-summary-fitness-age');
+                    const summaryView = document.getElementById('tv-summary');
+
+                    if (data.protocolId === 'fitnessage') {
+                        defaultSummary.classList.add('hidden');
+                        fitnessAgeSummary.classList.remove('hidden');
+                        summaryView.classList.add('p-0'); // Remove padding for the image view
+                    } else {
+                        defaultSummary.classList.remove('hidden');
+                        fitnessAgeSummary.classList.add('hidden');
+                        summaryView.classList.remove('p-0'); // Add padding back for default view
+
+                        const summaryContainer = document.getElementById('tv-summary-content');
+                        
+                        if (data.protocolId === 'returntoplay' && data.result) {
+                            const passedCount = data.result.result.categories.filter(c => c.passed).length;
+                            const totalCount = data.result.result.categories.length;
+                            summaryContainer.innerHTML = `
+                                <p class="text-gray-300">Return to Play</p>
+                                <p class="text-7xl font-bold text-emerald-400 my-2">${passedCount}/${totalCount}</p>
+                                <p class="text-gray-300">Tests Passed</p>
+                            `;
+                        } else {
+                            summaryContainer.innerHTML = `<p>Check with your trainer for details.</p>`;
+                        }
+                    }
+                    break;
+            }
+            targetView.classList.add('active');
+        }
+    }
+
+
+    // --- ORIGINAL MOBIL-JS (med modifikasjoner for å kalle updateTvScreen) ---
+    // --- STATE MANAGEMENT ---
+    let state = {
+        currentView: 'protocols', // Set default to protocols
+        user: null,
+        selectedClient: null,
+        lastSessionResult: null,
+        returnToPlaySettings: null,
+        shoulderTestSettings: null,
+        activeProtocol: null,
+        fitnessAgeFlowState: 'idle', // idle, stepOn, calibrating, pullInstruction, pulling, jumpInstruction, jumping, shoesOffConfirmation, balanceRightInstruction, balancingRight, balanceLeftInstruction, balancingLeft, results
+        testProgress: {
+            step: 0,
+            totalSteps: 4,
+            currentTest: '',
+            phase: 'ready', // ready, active, result
+            lastResult: null,
+            attempts: []
+        },
+        linkClientModalOpen: false,
+        historyModalOpen: false,
+        burgerMenuOpen: false,
+        addClientModalOpen: false,
+        toolboxModalOpen: false,
+        scheduleModalOpen: false,
+        analysisModalOpen: false,
+        confirmationModal: {
+            isOpen: false,
+            message: '',
+            confirmText: 'Confirm',
+            onConfirm: () => {}
+        },
+        currentChart: null,
+    };
+    
+    // --- MOCK & INSTRUCTION DATA ---
+    const EXERCISES = [
+        { title: "Squat", special: null, hasSettings: true },
+        { title: "Squat", special: "analytics", hasSettings: false },
+        { title: "Pull", special: null, hasSettings: false },
+        { title: "Jump", special: null, hasSettings: true },
+        { title: "Balance", special: null, hasSettings: true },
+        { title: "Monitor", special: null, hasSettings: true },
+    ];
+
+    const instructionsData = {
+        'Pull': ['Set straps to mid-thigh level', 'Keep back straight', 'Pull slowly, building up to max effort'],
+        'Jump': ['Stand with feet hip-width apart.', 'Swing arms, jump as high as possible.'],
+        'Balance Right': ['Stand on right foot.', 'Lift left leg 10 cm.', 'Arms relaxed, legs must not touch.', 'Hold for 20 seconds.'],
+        'Balance Left': ['Stand on left foot.', 'Lift right leg 10 cm.', 'Arms relaxed, legs must not touch.', 'Hold for 20 seconds.'],
+        'Balance - both legs': ['Stand with heels and toes touching.', 'Arms relaxed and still, touching outer thighs.', 'Hold for 20 seconds'],
+        'Balance - left leg': ['Stand on left foot.', 'Lift right leg 10 cm.', 'Arms relaxed, legs must not touch.', 'Hold for 20 seconds.'],
+        'Balance - right leg': ['Stand on right foot.', 'Lift left leg 10 cm.', 'Arms relaxed, legs must not touch.', 'Hold for 20 seconds.'],
+        'Balance - left knee': ['Stand on left foot.', 'Lift right knee to 90°.', 'Place hands on knee.', 'Hold for 20 seconds.'],
+        'Balance - right knee': ['Stand on right foot.', 'Lift left knee to 90°.', 'Place hands on knee.', 'Hold for 20 seconds.'],
+        'Balance - left ankle': ['Stand on left foot.', 'Lift right knee.', 'Touch right ankle with hands.', 'Hold for 20 seconds.'],
+        'Balance - right ankle': ['Stand on right foot.', 'Lift left knee.', 'Touch left ankle with hands.', 'Hold for 20 seconds.'],
+        'Squat': ['Stand with feet hip-width apart.', 'Cross hands over chest.', 'Squat as deep as possible.', 'Rise up explosively.'],
+        'Push-up': ['Knees on the ground, feet lifted off ground (no contact).', 'Place hands shoulder-width apart.', 'Push up explosively.', 'Hold for 4 seconds at the top.'],
+        'Isometric mid-thigh pull': ['Set straps to mid-thigh level.', 'Keep back straight.', 'Pull slowly, building up to max effort.'],
+        'Pull - left leg': ['Set straps to mid-thigh level.', 'Stand on left foot.', 'Lift right leg 10 cm.', 'Pull slowly, building up to max effort.'],
+        'Pull - right leg': ['Set straps to mid-thigh level.', 'Stand on right foot.', 'Lift left leg 10 cm.', 'Pull slowly, building up to max effort.'],
+        'CMJ (maximal) - left': ['Perform 5 counter movement jumps with the left leg.'],
+        'CMJ (maximal) - right': ['Perform 5 counter movement jumps with the right leg.'],
+        'CMJ (repeated) - left': ["Jump with the left leg for 30 seconds using the 'Goal time' setting."],
+        'CMJ (repeated) - right': ["Jump with the right leg for 30 seconds using the 'Goal time' setting."],
+        'Reactive strength index - left': ['Perform 10 rapid jumps with the left leg, and record the RSI.'],
+        'Reactive strength index - right': ['Perform 10 rapid jumps with the right leg, and record the RSI.'],
+        'Side hops - left': ['Perform side hops with the left leg for 30 seconds.'],
+        'Side hops - right': ['Perform side hops with the right leg for 30 seconds.'],
+        'I-Raise - Left Arm': ['Position: Arms straight by your sides, Left arm up on sensor. Right arm down', 'Action: hold the squeeze for 4 seconds'],
+        'I-Raise - Right Arm': ['Position: Arms straight by your sides, Right arm up on sensor. left arm down', 'Action: hold the squeeze for 4 seconds'],
+        'Y-Raise - Left Arm': ["Position: Arms in a 'Y' shape, left hand on sensor", 'Action: hold the squeeze for 4 seconds'],
+        'Y-Raise - Right Arm': ["Position: Arms in a 'Y' shape, right hand on sensor", 'Action: hold the squeeze for 4 seconds'],
+        'T-Raise - Left Arm': ["Position: Arms in a 'T' shape,. Left hand on sensor", 'Action: hold the squeeze for 4 seconds'],
+        'T-Raise - Right Arm': ["Position: Arms in a 'T' shape, thumbs up. Left hand on sensor", 'Action: hold the squeeze for 4 seconds']
+    };
+    
+    function generateRandomHistory(count = 5) {
+        let history = [];
+        for (let i = 0; i < count; i++) {
+            const pull = Math.floor(70 + Math.random() * 171); // 70 to 240
+            const jump = Math.floor(11 + Math.random() * 45); // 11 to 55
+            const balance = Math.floor(30 + Math.random() * 66); // 30 to 95
+            const fitnessAge = Math.max(18, Math.round(60 - (pull / 20) - (jump / 10) - (balance / 10)));
+            const randomDays = Math.floor(Math.random() * 365) + (i * 30);
+            const date = new Date();
+            date.setDate(date.getDate() - randomDays);
+            const formattedDate = date.toISOString().split('T')[0];
+
+            history.push({
+                protocolId: 'fitnessage',
+                date: formattedDate,
+                result: { fitnessAge },
+                details: {
+                    Pull: pull.toFixed(1),
+                    Jump: jump,
+                    Balance: balance,
+                }
+            });
+        }
+        return history.sort((a, b) => new Date(a.date) - new Date(b.date));
+    }
+
+    const mockData = {
+        protocols: [
+            { id: 'fitnessage', name: 'Fitness Age', tests: ['Pull', 'Jump', 'Balance Right', 'Balance Left'], description: 'Holistic status of physical condition.', time: 7, audience: 'For everyone', image: 'https://images.unsplash.com/photo-1599058917212-d750089bc07e?w=600&h=400&fit=crop&q=80' },
+            { id: 'returntoplay', name: 'Return to Play', tests: ['CMJ (maximal) - left', 'CMJ (maximal) - right', 'CMJ (repeated) - left', 'CMJ (repeated) - right', 'Reactive strength index - left', 'Reactive strength index - right', 'Side hops - left', 'Side hops - right'], description: 'Assess readiness to return to play after injury.', time: 12, audience: 'Athletes', image: 'https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=600&h=400&fit=crop&q=80' },
+            { id: 'shouldertest', name: 'Shoulder Screening', tests: ['I-Raise - Left Arm', 'I-Raise - Right Arm', 'Y-Raise - Left Arm', 'Y-Raise - Right Arm', 'T-Raise - Left Arm', 'T-Raise - Right Arm'], description: 'Analyze shoulder stability and strength.', time: 8, audience: 'Athletes', image: 'https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?w=600&h=400&fit=crop&q=80' },
+            { id: 'seniorfitness', name: 'Senior Fitness', tests: ['Balance - both legs', 'Balance - left leg', 'Balance - right leg', 'Balance - left knee', 'Balance - right knee', 'Balance - left ankle', 'Balance - right ankle', 'Jump', 'Squat', 'Push-up', 'Isometric mid-thigh pull', 'Pull - left leg', 'Pull - right leg'], description: 'Customized test battery for elderly.', time: 10, audience: '65 years +', image: 'https://storage.googleapis.com/files_webpage/Mockups/Work-Out.jpg' },
+        ],
+        clients: {
+            '4796701131': { name: 'Manuel Alfaro', history: generateRandomHistory() },
+            '4799326778': { name: 'Ola Næss Kaldestad', history: generateRandomHistory() },
+            '4798049945': { name: 'Monika Maria Dyrendahl', history: generateRandomHistory() },
+            '4790205527': { name: 'Ingeborg Vassøy', history: generateRandomHistory() },
+            '4795764045': { name: 'Erik Vassøy Olsen', history: generateRandomHistory() },
+            '4791234567': { name: 'Liam Hansen', history: generateRandomHistory() },
+            '4748123456': { name: 'Nora Johansen', history: generateRandomHistory() },
+            '4792345678': { name: 'Emil Olsen', history: generateRandomHistory() },
+            '4741234567': { name: 'Ingrid Larsen', history: generateRandomHistory() },
+            '4793456789': { name: 'Lucas Andersen', history: generateRandomHistory() },
+            '4745678901': { name: 'Sofie Nilsen', history: generateRandomHistory() },
+            '4794567890': { name: 'Isak Pedersen', history: generateRandomHistory() },
+            '4746789012': { name: 'Maja Kristiansen', history: generateRandomHistory() },
+            '4795678901': { name: 'Henrik Jensen', history: generateRandomHistory() },
+            '4747890123': { name: 'Amalie Karlsen', history: generateRandomHistory() }
+        }
+    };
+    
+    // --- RENDER FUNCTIONS ---
+    function render() {
+        const phoneContainer = document.getElementById('phone-container');
+        if (phoneContainer.classList.contains('asleep')) {
+            document.getElementById('app-container').style.display = 'none';
+            document.getElementById('main-nav').style.display = 'none';
+            return;
+        }
+
+        // If awake, show containers
+        document.getElementById('app-container').style.display = 'block';
+        
+        // Main Views
+        document.querySelectorAll('#phone-container .view').forEach(v => v.classList.remove('active'));
+        const activeView = document.getElementById(`${state.currentView}-view`);
+        if (activeView) activeView.classList.add('active');
+
+        // Main Nav
+        const mainNav = document.getElementById('main-nav');
+        const showNavFor = ['protocols', 'remote', 'clients', 'clientDetail', 'returntoplay-input', 'shouldertest-input'];
+        let showNav = showNavFor.includes(state.currentView);
+        if (state.activeProtocol === 'fitnessage') {
+            showNav = false; // Hide nav during entire fitness age flow
+        }
+
+        mainNav.style.display = showNav ? 'flex' : 'none';
+        
+        if (showNav) {
+            document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+            let navId = state.currentView;
+            if (state.currentView === 'clientDetail') {
+                navId = 'clients';
+            } else if (['returntoplay-input', 'shouldertest-input'].includes(state.currentView)) {
+                navId = 'protocols';
+            }
+            const activeNavItem = document.getElementById(`nav-${navId}`);
+            if (activeNavItem) activeNavItem.classList.add('active');
+        }
+
+        // Specific View Rendering
+        if (state.currentView === 'protocols') renderProtocolsView();
+        if (state.currentView === 'remote') renderRemoteView();
+        if (state.currentView === 'clients') renderClientsView();
+        if (state.currentView === 'returntoplay-input') renderReturnToPlayInputView();
+        if (state.currentView === 'shouldertest-input') renderShoulderTestInputView();
+        if (state.currentView === 'coachMode') renderCoachModeView();
+        if (state.currentView === 'results') renderResultsView();
+        if (state.currentView === 'clientDetail') renderClientDetailView();
+        
+        // Modals
+        document.getElementById('burger-menu-modal').style.display = state.burgerMenuOpen ? 'block' : 'none';
+        document.getElementById('add-client-modal').style.display = state.addClientModalOpen ? 'flex' : 'none';
+        document.getElementById('toolbox-modal').style.display = state.toolboxModalOpen ? 'flex' : 'none';
+        document.getElementById('schedule-modal').style.display = state.scheduleModalOpen ? 'flex' : 'none';
+        document.getElementById('analysis-modal').style.display = state.analysisModalOpen ? 'flex' : 'none';
+        document.getElementById('link-client-modal').style.display = state.linkClientModalOpen ? 'block' : 'none';
+        document.getElementById('history-modal').style.display = state.historyModalOpen ? 'block' : 'none';
+        document.getElementById('confirmation-modal').style.display = state.confirmationModal.isOpen ? 'flex' : 'none';
+        
+        lucide.createIcons();
+    }
+
+    function renderProtocolsView() {
+        const container = document.getElementById('protocols-content-container');
+        
+        const clientHeader = state.selectedClient
+            ? `<div class="w-full rounded-xl border p-3 flex items-center justify-between border-emerald-400/50 bg-emerald-900/20 mb-4">
+                <div class="text-gray-200 text-sm flex items-center gap-2">
+                    <span>
+                        <button onclick="navigate('clientDetail')" class="text-white font-medium hover:underline focus:outline-none">${state.selectedClient.name}</button> 
+                        is selected
+                    </span>
+                </div>
+                <button onclick="confirmSignOut()" class="ml-3 px-3 py-1.5 rounded-xl border border-red-400/40 text-red-300 text-xs bg-red-900/30 hover:bg-red-900/50">Sign out</button>
+            </div>`
+            : `<button onclick="openLinkClientModal()" class="w-full px-4 py-2 rounded-lg bg-[#1a1c1f] border border-gray-800 text-gray-200 mb-4 hover:border-gray-700">+ Link Client</button>`;
+        
+        const protocolCards = mockData.protocols.map(p => {
+            const history = state.selectedClient?.history.find(h => h.protocolId === p.id);
+            const historyBadge = history 
+                ? `<div class="absolute top-3 right-3 bg-emerald-900/50 border border-emerald-500/30 text-emerald-300 text-xs font-semibold px-2 py-1 rounded-full flex items-center">
+                    <i data-lucide="check" class="w-3 h-3 mr-1"></i>
+                    Last: ${new Date(history.date).toLocaleDateString("en-US")}
+                </div>` 
+                : '';
+            const isFeatured = p.id === 'fitnessage';
+            return `
+            <div class="relative rounded-2xl overflow-hidden border ${isFeatured ? 'border-emerald-500/60' : 'border-gray-800'}">
+                <img src="${p.image}" alt="${p.name}" class="w-full h-40 object-cover">
+                <div class="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent"></div>
+                ${historyBadge}
+                <div class="absolute bottom-0 left-0 right-0 p-4 flex justify-between items-end">
+                    <div>
+                        <h3 class="text-white font-semibold text-lg">${p.name}</h3>
+                        <div class="flex items-center gap-4 text-sm text-gray-300 mt-1">
+                            <span class="inline-flex items-center gap-1.5"><i data-lucide="hourglass" class="w-3.5 h-3.5"></i>~${p.time} min</span>
+                            <span class="inline-flex items-center gap-1.5"><i data-lucide="users" class="w-3.5 h-3.5"></i>${p.audience}</span>
+                        </div>
+                    </div>
+                    <button onclick="startProtocol('${p.id}')" id="${isFeatured ? 'fitness-age-start-button' : ''}" class="start-protocol-btn px-4 py-2 rounded-lg ${isFeatured ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-gray-600 hover:bg-gray-700'} text-white font-medium flex items-center justify-center gap-2 text-sm">
+                        <i data-lucide="play" class="w-4 h-4"></i> Start
+                    </button>
+                </div>
+            </div>`;
+        }).join('');
+
+        container.innerHTML = clientHeader + protocolCards;
+    }
+    
+    function renderRemoteView() {
+        const container = document.getElementById('remote-content-container');
+        if (!container) return;
+
+        const clientHeaderHTML = state.selectedClient
+            ? `<div class="w-full rounded-xl border p-3 flex items-center justify-between border-emerald-400/50 bg-emerald-900/20">
+                <div class="text-gray-200 text-sm"><span class="text-white font-medium">${state.selectedClient.name}</span> is selected</div>
+                <button onclick="confirmSignOut()" class="ml-3 px-3 py-1.5 rounded-xl border border-red-400/40 text-red-300 text-xs bg-red-900/30 hover:bg-red-900/50">Sign out</button>
+            </div>`
+            : `<button onclick="openLinkClientModal()" class="w-full px-4 py-2 rounded-lg bg-[#1a1c1f] border border-gray-800 text-gray-200 hover:border-gray-700">Link Client</button>`;
+
+        const exerciseItemsHTML = EXERCISES.map(ex => {
+            const titleHtml = ex.special
+                ? `${ex.title} <span class="text-emerald-400 font-normal">${ex.special}</span>`
+                : ex.title;
+            
+            const settingsIcon = ex.hasSettings
+                ? '<button class="text-gray-400 hover:text-white"><i data-lucide="sliders-horizontal" class="w-5 h-5"></i></button>'
+                : '<div class="w-5 h-5"></div>';
+
+            return `
+            <div class="w-full flex items-center justify-between rounded-xl bg-[#1a1c1f] border border-gray-800 px-3 py-2.5">
+                <div class="flex items-center gap-3">
+                    <button class="text-gray-400 hover:text-white"><i data-lucide="info" class="w-5 h-5"></i></button>
+                    <span class="text-white font-medium">${titleHtml}</span>
+                </div>
+                <div class="flex items-center gap-3">
+                    ${settingsIcon}
+                    <button class="text-emerald-400 hover:text-emerald-300">
+                        <i data-lucide="play" class="w-5 h-5"></i>
+                    </button>
+                </div>
+            </div>
+            `;
+        }).join('');
+        
+        const bottomButtonsHTML = `
+            <div class="mt-6 space-y-2">
+                <button class="w-full flex items-center justify-center gap-2 rounded-xl bg-[#1a1c1f] border border-gray-800 px-3 py-2.5 text-gray-200 hover:bg-white/5">
+                    <i data-lucide="refresh-cw" class="w-4 h-4"></i> Reload screen
+                </button>
+                <button class="w-full flex items-center justify-center gap-2 rounded-xl bg-[#1a1c1f] border border-gray-800 px-3 py-2.5 text-gray-200 hover:bg-white/5">
+                    <i data-lucide="log-out" class="w-4 h-4"></i> Sign out from TV
+                </button>
+                <button class="w-full flex items-center justify-center gap-2 rounded-xl bg-[#1a1c1f] border border-gray-800 px-3 py-2.5 text-gray-200 hover:bg-white/5">
+                    <i data-lucide="globe" class="w-4 h-4"></i> Visit www.alphatek.ai
+                </button>
+            </div>
+        `;
+        
+        container.innerHTML = `
+            <div class="mt-4">${clientHeaderHTML}</div>
+            <h2 class="text-white text-lg font-semibold tracking-tight mt-4">Switch Screen</h2>
+            <div class="mt-1 space-y-2">
+                ${exerciseItemsHTML}
+            </div>
+            ${bottomButtonsHTML}
+            <footer class="text-center text-gray-500 text-xs py-6">AlphaPWR — v2.0 by <span class="text-gray-300">Alphatek</span></footer>
+        `;
+    }
+
+    function renderClientsView() {
+        const container = document.getElementById('clients-content-container');
+        
+        if (state.selectedClient) {
+            // If a client is selected, show their history
+            navigate('clientDetail'); // Redirect to the detail view
+            return;
+        } 
+        
+        // If no client is selected, show the search interface
+        container.innerHTML = `
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-white text-lg font-semibold tracking-tight">Find Client</h2>
+                <button id="add-new-client-btn-dynamic" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-sm inline-flex items-center gap-2">
+                    <i data-lucide="plus" class="w-4 h-4"></i> New
+                </button>
+            </div>
+            <p class="text-gray-400 text-sm mb-4">Enter phone number or name to find a client.</p>
+            <div class="relative">
+                <i data-lucide="search" class="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5"></i>
+                <input id="client-search-input-dynamic" type="text" placeholder="Name or phone number..." class="w-full bg-[#101214] border border-gray-700 rounded-xl py-3 pl-12 pr-4 text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+            </div>
+            <div id="client-search-results-dynamic" class="mt-4 space-y-2">
+                </div>
+        `;
+        // Attach event listeners for the dynamic elements
+        document.getElementById('add-new-client-btn-dynamic').onclick = openAddClientModal;
+        document.getElementById('client-search-input-dynamic').addEventListener('input', (e) => searchClients(e, 'client-search-results-dynamic'));
+    }
+    
+    function renderCoachModeView() {
+        const container = document.getElementById('coachMode-view');
+        if (!container) return;
+        const progress = state.testProgress;
+        const protocol = mockData.protocols.find(p => p.id === state.activeProtocol) || { name: 'Test', time: 0 };
+
+        const coachHeaderHTML = `
+        <header class="absolute top-0 left-0 right-0 w-full z-40 bg-[#0b0d0f] border-b border-gray-800">
+            <div class="max-w-sm mx-auto px-4 py-3 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <img src="https://storage.googleapis.com/files_webpage/narrow.png" alt="Alphatek" class="h-5 w-auto" />
+                </div>
+                <h2 class="text-white text-lg font-semibold tracking-tight">${protocol.name}</h2>
+                <div class="flex items-center gap-2">
+                    <button class="p-2 rounded-full bg-gray-800/50 text-gray-300 border border-gray-700"><i data-lucide="moon" class="w-4 h-4"></i></button>
+                    <button class="burger-menu-btn p-2 rounded-full bg-gray-800/50 text-gray-300 border border-gray-700"><i data-lucide="menu" class="w-4 h-4"></i></button>
+                </div>
+            </div>
+        </header>
+        `;
+        
+        const clientSectionHTML = state.selectedClient
+            ? `<div class="w-full rounded-xl border p-3 flex items-center justify-between border-gray-700 bg-[#1a1c1f]">
+                <span class="text-gray-200 text-sm">Client: <span class="font-medium text-white">${state.selectedClient.name}</span></span>
+                <button onclick="openHistoryModal()" class="text-emerald-400 text-sm font-semibold hover:text-emerald-300">View History</button>
+            </div>`
+            : `<button onclick="openLinkClientModal()" class="w-full py-3 rounded-lg bg-[#1a1c1f] border border-gray-800 text-gray-200 hover:border-gray-700">+ Link Client to Session</button>`;
+
+        const progressPercentage = (progress.step / progress.totalSteps) * 100;
+        const progressBarHTML = `
+            <div class="mt-4">
+                <p class="text-sm text-gray-400 mb-2">PROGRESS: ${progress.step + 1} / ${progress.totalSteps}</p>
+                <div class="w-full bg-[#1a1c1f] rounded-full h-1.5">
+                    <div class="bg-emerald-500 h-1.5 rounded-full transition-all duration-500" style="width: ${Math.max(2, progressPercentage)}%"></div>
+                </div>
+            </div>`;
+
+        let mainContentHTML = '';
+        
+        const rowsHTML = progress.attempts.map((attempt, index) => {
+            let improvementHTML = '<span class="text-gray-500">N/A</span>';
+            if (attempt.improvement !== null && attempt.improvement !== undefined) {
+                const isPositive = parseFloat(attempt.improvement) > 0;
+                const colorClass = isPositive ? 'text-emerald-400' : 'text-red-400';
+                improvementHTML = `<span class="${colorClass}">${isPositive ? '▲' : '▼'} ${Math.abs(attempt.improvement)} ${attempt.unit}</span>`;
+            }
+            const isChecked = (progress.phase === 'result' && index === progress.attempts.length - 1) ? 'checked' : '';
+            return `
+                <tr class="border-b border-gray-800 last:border-b-0">
+                    <td class="p-2 text-center"><input type="checkbox" name="attempt" onchange="validateNextTestButton()" class="bg-[#101214] border border-gray-700 rounded text-emerald-500 focus:ring-emerald-500" ${isChecked}/></td>
+                    <td class="p-2">${index + 1}</td>
+                    <td class="p-2 font-mono">${attempt.value} ${attempt.unit}</td>
+                    <td class="p-2">${improvementHTML}</td>
+                </tr>
+            `;
+        }).join('');
+
+        const activeRowHTML = progress.phase === 'active' ? `
+            <tr class="border-b border-gray-800 last:border-b-0 animate-pulse">
+                <td class="p-2 text-center">
+                    <div class="h-4 w-4 bg-gray-700 rounded"></div>
+                </td>
+                <td class="p-2">${progress.attempts.length + 1}</td>
+                <td class="p-2" colspan="2">
+                    <span class="text-gray-500">Measuring...</span>
+                </td>
+            </tr>
+        ` : '';
+
+        const placeholderRowHTML = (progress.attempts.length === 0 && progress.phase !== 'active') ? `
+            <tr>
+                <td colspan="4" class="p-4 text-center text-gray-500">No attempts recorded yet.</td>
+            </tr>
+        ` : '';
+
+        const attemptsTableHTML = `
+            <div class="w-full mx-auto my-4 bg-[#1a1c1f] border border-gray-800 rounded-lg overflow-hidden">
+                <table class="w-full text-left text-sm text-gray-200">
+                    <thead class="bg-gray-800/50">
+                        <tr class="border-b border-gray-800">
+                            <th class="p-2 w-10 text-center"></th>
+                            <th class="p-2 font-semibold">Attempt</th>
+                            <th class="p-2 font-semibold">Result</th>
+                            <th class="p-2 font-semibold">Improvement</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rowsHTML}
+                        ${activeRowHTML}
+                        ${placeholderRowHTML}
+                    </tbody>
+                </table>
+            </div>
+        `;
+
+        // Dynamic Start Button ID and Text
+        const startButtonId = `start-button-${progress.currentTest.toLowerCase().replace(/ /g, '-')}`;
+        const startButtonText = `START ${progress.currentTest.toUpperCase()}`;
+
+        switch (progress.phase) {
+             case 'ready':
+                if (state.activeProtocol === 'fitnessage') {
+                    if (state.fitnessAgeFlowState === 'calibrating') {
+                         mainContentHTML = `
+                            <div>
+                                <button disabled class="w-full mx-auto bg-red-600 rounded-xl text-white text-xl font-bold tracking-widest py-4 opacity-50 cursor-not-allowed brand-glow-red">STEP ON TO CALIBRATE</button>
+                            </div>`;
+                    } else if (state.fitnessAgeFlowState === 'shoesOffConfirmation') {
+                        mainContentHTML = `
+                            <div>
+                                <button id="confirm-shoes-off" onclick="confirmShoesOff()" class="w-full mx-auto bg-yellow-500 rounded-xl text-black text-lg font-bold tracking-widest py-3 brand-glow-yellow">CONFIRM SHOES ARE OFF</button>
+                            </div>`;
+                    }
+                     else {
+                         mainContentHTML = `
+                            <div>
+                                <button id="${startButtonId}" onclick="handleTestControl('start')" class="w-full mx-auto bg-emerald-600 rounded-xl text-white text-2xl font-bold tracking-widest py-4 transition transform hover:scale-105 active:scale-95 brand-glow-green">${startButtonText}</button>
+                            </div>`;
+                    }
+                } else {
+                    mainContentHTML = `
+                        <div>
+                            <button id="${startButtonId}" onclick="handleTestControl('start')" class="w-full mx-auto bg-emerald-600 rounded-xl text-white text-2xl font-bold tracking-widest py-4 transition transform hover:scale-105 active:scale-95 brand-glow-green">${startButtonText}</button>
+                        </div>`;
+                }
+                break;
+            case 'active':
+                mainContentHTML = `
+                    <div>
+                        <button onclick="handleTestControl('abort')" class="w-full mx-auto bg-yellow-500 rounded-xl text-black text-lg font-bold tracking-widest py-3 brand-glow-yellow text-center">
+                            Test in progress...
+                            <span class="text-xs font-medium block mt-1">Click to abort</span>
+                        </button>
+                    </div>`;
+                break;
+            case 'result':
+                mainContentHTML = `
+                    <div>
+                        <button onclick="handleTestControl('start')" class="w-full mx-auto bg-blue-500 rounded-xl text-white text-2xl font-bold tracking-widest py-4 transition transform hover:scale-105 active:scale-95 brand-glow-blue">REPEAT TEST</button>
+                    </div>`;
+                break;
+        }
+
+        const instructions = instructionsData[progress.currentTest] || [];
+        const instructionsHTML = `
+            <div class="bg-[#1a1c1f] border border-gray-800 rounded-lg p-4 text-left w-full mx-auto">
+                <p class="text-sm text-gray-400 mb-2">EXERCISE</p>
+                <h3 class="font-semibold text-white mb-3 text-lg">${progress.currentTest.toUpperCase()}</h3>
+                <p class="text-sm text-gray-400 mb-2">INSTRUCTIONS</p>
+                <ol class="list-decimal list-inside text-gray-200 space-y-1">
+                    ${instructions.map(inst => `<li>${inst}</li>`).join('')}
+                </ol>
+            </div>`;
+
+        const isPrimaryNextAction = !!progress.lastResult;
+
+        const nextTestButtonClass = isPrimaryNextAction
+            ? 'bg-emerald-600 text-white font-semibold px-4 py-2 rounded-lg transition hover:bg-emerald-500' // Primary action
+            : 'bg-[#1a1c1f] border border-gray-700 text-emerald-400 font-semibold px-4 py-2 rounded-lg transition hover:bg-gray-800/50'; // Secondary action
+
+        const testNavText = progress.lastResult ? 'Next Test >' : 'Skip Test >';
+        const prevButtonText = progress.step === 0 ? '&lt; Back' : '&lt; Previous';
+        const prevButtonClass = 'bg-[#1a1c1f] border border-gray-700 text-gray-200 font-semibold px-4 py-2 rounded-lg transition hover:bg-gray-800/50';
+
+
+        const coachFooterHTML = `
+        <footer class="absolute bottom-0 left-0 right-0 z-30 bg-[#0a0c0e] border-t border-gray-800">
+            <div class="max-w-sm mx-auto px-4 py-3 flex justify-between items-center">
+                <button onclick="handleTestControl('prev_test')" class="${prevButtonClass}">${prevButtonText}</button>
+                <button id="next-test-btn" onclick="handleTestControl('next_test')" class="${nextTestButtonClass}">${testNavText}</button>
+            </div>
+        </footer>`;
+
+        container.innerHTML = `
+            ${coachHeaderHTML}
+            <main class="h-full overflow-y-auto pt-16 pb-40">
+                <div class="max-w-sm mx-auto px-4">
+                    <div class="w-full mt-4">
+                        ${clientSectionHTML}
+                    </div>
+                    ${progressBarHTML}
+                    <div class="w-full mt-4">
+                        ${instructionsHTML}
+                    </div>
+                    ${attemptsTableHTML}
+                </div>
+            </main>
+            <div class="absolute bottom-[68px] left-0 right-0 z-20 bg-gradient-to-t from-[#0a0c0e] via-[#0a0c0e] to-transparent pt-12 pb-4">
+                <div class="max-w-sm mx-auto px-4">
+                    ${mainContentHTML}
+                </div>
+            </div>
+            ${coachFooterHTML}
+        `;
+        
+        if (progress.phase === 'result' || progress.phase === 'active') {
+            validateNextTestButton();
+        }
+    }
+
+
+    function renderResultsView() {
+        const container = document.getElementById('results-view');
+        
+        const headerHTML = `
+            <header class="absolute top-0 left-0 right-0 w-full z-40 bg-[#0b0d0f] border-b border-gray-800">
+                <div class="max-w-sm mx-auto px-4 py-3 flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <img src="https://storage.googleapis.com/files_webpage/narrow.png" alt="Alphatek" class="h-5 w-auto" />
+                    </div>
+                    <h2 class="text-white text-lg font-semibold tracking-tight">Results</h2>
+                    <div class="flex items-center gap-2">
+                        <button class="p-2 rounded-full bg-gray-800/50 text-gray-300 border border-gray-700"><i data-lucide="moon" class="w-4 h-4"></i></button>
+                        <button class="burger-menu-btn p-2 rounded-full bg-gray-800/50 text-gray-300 border border-gray-700"><i data-lucide="menu" class="w-4 h-4"></i></button>
+                    </div>
+                </div>
+            </header>
+        `;
+
+        const clientSectionHTML = state.selectedClient
+            ? `<div class="w-full rounded-xl border p-3 flex items-center justify-between border-emerald-400/50 bg-emerald-900/20">
+                    <div class="text-gray-200 text-sm">Results for <span class="font-medium text-white">${state.selectedClient.name}</span></div>
+                    <button onclick="confirmSignOut()" class="ml-3 px-3 py-1.5 rounded-xl border border-red-400/40 text-red-300 text-xs bg-red-900/30 hover:bg-red-900/50">Sign out</button>
+                </div>`
+            : `<button onclick="openLinkClientModal()" class="w-full px-4 py-2 rounded-lg bg-[#1a1c1f] border border-gray-800 text-gray-200 hover:border-gray-700">+ Link Client to Session</button>`;
+
+        let resultsContentHTML = '';
+        let protocolId = state.activeProtocol;
+
+        // Determine which protocol's results to show
+        let lastHistoryEntry = null;
+        if (state.selectedClient && state.selectedClient.history.length > 0) {
+            lastHistoryEntry = state.selectedClient.history[state.selectedClient.history.length - 1];
+            protocolId = lastHistoryEntry?.protocolId;
+        } else if (state.lastSessionResult) {
+            protocolId = state.lastSessionResult.protocolId;
+        }
+
+        if (protocolId === 'seniorfitness') {
+            resultsContentHTML = renderSeniorFitnessResults();
+        } else if (protocolId === 'returntoplay') {
+            resultsContentHTML = renderReturnToPlayResults();
+        } else if (protocolId === 'shouldertest') {
+            resultsContentHTML = renderShoulderScreeningResults();
+        } else if (state.selectedClient && state.selectedClient.history && state.selectedClient.history.length > 0) {
+            const history = state.selectedClient.history.filter(h => h.protocolId === 'fitnessage');
+            if (history.length > 0) {
+                const latest = history[history.length - 1];
+                const previous = history.length > 1 ? history[history.length - 2] : null;
+
+                let narrative = "This is the first Fitness Age test recorded.";
+                let evidenceTilesHTML = '';
+
+                if (previous) {
+                    const ageDiff = previous.result.fitnessAge - latest.result.fitnessAge;
+                    const ageChangeText = ageDiff === 0 ? "unchanged from" : (ageDiff > 0 ? `${ageDiff} years younger than` : `${Math.abs(ageDiff)} years older than`);
+                    
+                    const pullDelta = parseFloat(latest.details.Pull) - parseFloat(previous.details.Pull);
+                    const jumpDelta = parseInt(latest.details.Jump) - parseInt(previous.details.Jump);
+                    const balanceDelta = parseInt(latest.details.Balance) - parseInt(previous.details.Balance);
+
+                    let driverText = '';
+                    const deltas = [
+                        { name: 'jump', value: Math.abs(jumpDelta), raw: jumpDelta, unit: 'cm' },
+                        { name: 'pull', value: Math.abs(pullDelta), raw: pullDelta, unit: 'kg' },
+                        { name: 'balance', value: Math.abs(balanceDelta), raw: balanceDelta, unit: '%' }
+                    ].sort((a,b) => b.value - a.value);
+
+                    const biggestMover = deltas[0];
+                    if (biggestMover.raw !== 0) {
+                        driverText = ` Biggest driver: ${biggestMover.raw > 0 ? '+' : ''}${biggestMover.raw.toFixed(1)}${biggestMover.unit} ${biggestMover.name}.`;
+                    }
+
+                    narrative = `Your fitness age is ${latest.result.fitnessAge} — ${ageChangeText} your last visit.${driverText}`;
+
+                    const formatDelta = (val, unit) => val === 0 ? `<span class="text-gray-500">±0${unit}</span>` : (val > 0 ? `<span class="text-emerald-400">▲ +${val.toFixed(1)}${unit}</span>` : `<span class="text-red-400">▼ ${val.toFixed(1)}${unit}</span>`);
+
+                    evidenceTilesHTML = `
+                    <div class="mt-4 grid grid-cols-3 gap-2">
+                        <div class="bg-gray-800/50 p-2 rounded-lg text-center">
+                            <p class="text-xs text-gray-400">PULL</p>
+                            <p class="text-lg font-mono font-bold">${latest.details.Pull}kg</p>
+                            <p class="text-xs">${formatDelta(pullDelta, 'kg')}</p>
+                        </div>
+                        <div class="bg-gray-800/50 p-2 rounded-lg text-center">
+                            <p class="text-xs text-gray-400">JUMP</p>
+                            <p class="text-lg font-mono font-bold">${latest.details.Jump}cm</p>
+                            <p class="text-xs">${formatDelta(jumpDelta, 'cm')}</p>
+                        </div>
+                        <div class="bg-gray-800/50 p-2 rounded-lg text-center">
+                            <p class="text-xs text-gray-400">BALANCE</p>
+                            <p class="text-lg font-mono font-bold">${latest.details.Balance}%</p>
+                            <p class="text-xs">${formatDelta(balanceDelta, '%')}</p>
+                        </div>
+                    </div>`;
+                }
+                
+                resultsContentHTML = `
+                    <div class="bg-[#1a1c1f] border border-gray-800 my-4 p-6 rounded-2xl text-center">
+                        <p class="text-gray-400 tracking-widest text-sm">FITNESS AGE</p>
+                        <h1 class="text-7xl font-bold text-white my-2 font-mono">${latest.result.fitnessAge}</h1>
+                        <p class="text-gray-200 text-sm px-2">${narrative}</p>
+                        ${evidenceTilesHTML}
+                    </div>`;
+            } else if (state.selectedClient) {
+                resultsContentHTML = `
+                    <div class="bg-[#1a1c1f] border border-gray-800 my-4 p-6 rounded-2xl text-center">
+                        <i data-lucide="info" class="w-10 h-10 mx-auto text-blue-400 mb-3"></i>
+                        <p class="text-gray-200">Complete a protocol to see results.</p>
+                    </div>`;
+            }
+        } else {
+            resultsContentHTML = `
+                <div class="bg-[#1a1c1f] border border-gray-800 my-4 p-6 rounded-2xl text-center">
+                    <i data-lucide="alert-triangle" class="w-10 h-10 mx-auto text-yellow-500 mb-3"></i>
+                    <p class="text-gray-200">Link client to session to see results.</p>
+                </div>`;
+        }
+        
+        const ctaButtonsHTML = `
+            <div class="space-y-3 mt-6">
+                <button onclick="handleSendSummary()" class="w-full bg-blue-600 text-white font-bold py-3 rounded-xl transition hover:bg-blue-500">
+                    Send to customer
+                </button>
+                <button onclick="openScheduleModal()" class="w-full bg-emerald-600 text-white font-bold py-3 rounded-xl transition hover:bg-emerald-500">
+                    Schedule next session
+                </button>
+            </div>`;
+        
+        const analysisDisabled = !state.selectedClient || !state.selectedClient.history || state.selectedClient.history.length === 0;
+        const analysisHTML = protocolId === 'fitnessage' ? `
+            <div class="mt-8 ${analysisDisabled ? 'opacity-50' : ''}">
+                <h3 class="font-bold text-lg mb-2 text-left text-gray-100">Analysis</h3>
+                ${analysisDisabled ? '<p class="text-xs text-gray-500 text-left mb-2">Link a client and complete a test to view analysis.</p>' : ''}
+                <div class="flex gap-2 justify-center">
+                    <button ${analysisDisabled ? 'disabled' : ''} onclick="showAnalysisChart('Pull')" class="flex-1 bg-[#1a1c1f] border border-gray-800 text-white font-semibold py-2 rounded-lg transition ${!analysisDisabled && 'hover:bg-gray-800/50'}">📈 Pull</button>
+                    <button ${analysisDisabled ? 'disabled' : ''} onclick="showAnalysisChart('Jump')" class="flex-1 bg-[#1a1c1f] border border-gray-800 text-white font-semibold py-2 rounded-lg transition ${!analysisDisabled && 'hover:bg-gray-800/50'}">📈 Jump</button>
+                    <button ${analysisDisabled ? 'disabled' : ''} onclick="showAnalysisChart('Balance')" class="flex-1 bg-[#1a1c1f] border border-gray-800 text-white font-semibold py-2 rounded-lg transition ${!analysisDisabled && 'hover:bg-gray-800/50'}">📈 Balance</button>
+                </div>
+            </div>` : '';
+        
+        const footerHTML = `
+            <footer class="absolute bottom-0 left-0 right-0 z-30 bg-[#0a0c0e] border-t border-gray-800">
+                <div class="max-w-sm mx-auto px-4 py-3 flex justify-between items-center">
+                    <button onclick="navigate('coachMode')" class="bg-[#1a1c1f] border border-gray-700 text-gray-200 font-semibold px-4 py-2 rounded-lg transition hover:bg-gray-800/50">&lt; Back to Test</button>
+                    <button onclick="finishSession()" class="bg-emerald-600 text-white font-semibold py-2 px-6 rounded-lg transition hover:bg-emerald-500 text-sm">Finish Session</button>
+                </div>
+            </footer>
+        `;
+
+
+        container.innerHTML = `
+            ${headerHTML}
+            <main class="h-full overflow-y-auto pt-16 pb-24">
+                <div class="max-w-sm mx-auto px-4 w-full">
+                    <div class="mt-4">
+                        ${clientSectionHTML}
+                    </div>
+                    ${resultsContentHTML}
+                    ${ctaButtonsHTML}
+                    ${analysisHTML}
+                </div>
+            </main>
+            ${footerHTML}
+        `;
+        if (protocolId === 'returntoplay' || protocolId === 'shouldertest') {
+            setupTabListeners();
+        }
+    }
+    
+    function renderStars(score, max = 5, sizeClass = 'w-5 h-5') {
+        let stars = '';
+        let fullStars = Math.round(score);
+        for (let i = 0; i < fullStars; i++) {
+            stars += `<svg class="${sizeClass} filled" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>`;
+        }
+        for (let i = fullStars; i < max; i++) {
+            stars += `<svg class="${sizeClass}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>`;
+        }
+        return `<div class="star-rating flex items-center gap-1">${stars}</div>`;
+    }
+
+    function renderPerformanceBar(percentage) {
+        let colorClass = 'bg-red-500';
+        if (percentage > 33) colorClass = 'bg-yellow-500';
+        if (percentage > 66) colorClass = 'bg-emerald-500';
+        return `
+            <div class="w-full bg-gray-700 rounded-full h-2">
+                <div class="${colorClass} h-2 rounded-full" style="width: ${percentage}%"></div>
+            </div>
+        `;
+    }
+
+    function renderSeniorFitnessResults() {
+        let latestResult;
+
+        if (state.selectedClient && state.selectedClient.history) {
+            latestResult = state.selectedClient.history
+                .slice()
+                .reverse()
+                .find(h => h.protocolId === 'seniorfitness');
+        } else if (state.lastSessionResult && state.lastSessionResult.protocolId === 'seniorfitness') {
+            latestResult = state.lastSessionResult;
+        }
+
+        if (!latestResult) {
+            const { result } = generateSeniorFitnessResult();
+            latestResult = { result };
+        }
+
+        if (!latestResult) return '<p class="text-center text-gray-500 py-8">No Senior Fitness test data available.</p>';
+
+        const { total, balance, funktion, styrke, details } = latestResult.result;
+
+        const createDetailItem = (name, item, icon) => {
+            const content = `
+                <i data-lucide="${icon}" class="w-5 h-5 text-gray-400 mt-1"></i>
+                <div class="flex-1 space-y-1">
+                    <span class="text-sm text-gray-300">${name}</span>
+                    ${renderPerformanceBar(parseInt(item.diff))}
+                </div>
+                <div class="text-right flex-shrink-0 w-28">
+                    <div class="font-mono text-white text-sm whitespace-nowrap">${item.value}</div>
+                    <div class="text-xs font-bold ${parseInt(item.diff) > 66 ? 'text-emerald-400' : parseInt(item.diff) > 33 ? 'text-yellow-400' : 'text-red-400'}">${item.diff}%</div>
+                </div>
+            `;
+            if (state.selectedClient) {
+                return `<button onclick="showSeniorFitnessAnalysis('${name}')" class="w-full text-left flex items-start gap-3 py-3 px-4 hover:bg-white/5 transition-colors">${content}</button>`;
+            } else {
+                return `<div class="flex items-start gap-3 py-3 px-4">${content}</div>`;
+            }
+        };
+
+        const balanceItems = `
+            ${createDetailItem('Balance - both legs', details['Balance - both legs'], 'activity')}
+            ${createDetailItem('Balance - one leg', details['Balance - one leg'], 'activity')}
+            ${createDetailItem('Balance - knee', details['Balance - knee'], 'activity')}
+            ${createDetailItem('Balance - ankle', details['Balance - ankle'], 'activity')}
+        `;
+
+        const functionItems = `
+            ${createDetailItem('Jump', details['Jump'], 'accessibility')}
+            ${createDetailItem('Squat - velocity', details['Squat - velocity'], 'accessibility')}
+            ${createDetailItem('Squat - depth', details['Squat - depth'], 'accessibility')}
+        `;
+        
+        const strengthItems = `
+            ${createDetailItem('Push-up', details['Push-up'], 'dumbbell')}
+            ${createDetailItem('IMTP', details['IMTP'], 'dumbbell')}
+            ${createDetailItem('IMTP - left', details['IMTP - left'], 'dumbbell')}
+            ${createDetailItem('IMTP - right', details['IMTP - right'], 'dumbbell')}
+        `;
+
+        const createCollapsibleCard = (category, scoreData, itemsHTML) => {
+            return `
+                <div class="bg-[#1a1c1f] border border-gray-800 rounded-xl overflow-hidden">
+                    <details>
+                        <summary class="p-4 cursor-pointer flex justify-between items-center">
+                            <h3 class="font-semibold text-white">${category}</h3>
+                            <div class="flex items-center gap-2">
+                                ${renderStars(scoreData.score)}
+                                <i data-lucide="chevron-down" class="w-5 h-5 text-gray-400 transition-transform duration-300"></i>
+                            </div>
+                        </summary>
+                        <div class="border-t border-gray-700/50 divide-y divide-gray-700/50">
+                            ${itemsHTML}
+                        </div>
+                    </details>
+                </div>
+            `;
+        };
+
+        return `
+            <div class="my-4 space-y-4">
+                <div class="text-center space-y-2">
+                    <h2 class="text-xl font-bold">Total - ${total.toFixed(1)}/5</h2>
+                    <div class="flex justify-center">${renderStars(total, 5, 'w-7 h-7')}</div>
+                </div>
+                ${createCollapsibleCard('Balance', balance, balanceItems)}
+                ${createCollapsibleCard('Function', funktion, functionItems)}
+                ${createCollapsibleCard('Strength', styrke, strengthItems)}
+            </div>
+        `;
+    }
+
+    function renderReturnToPlayResults() {
+        let latestResult;
+        if (state.selectedClient && state.selectedClient.history.length > 0) {
+            latestResult = state.selectedClient.history
+                .slice()
+                .reverse()
+                .find(h => h.protocolId === 'returntoplay');
+        } else if (state.lastSessionResult && state.lastSessionResult.protocolId === 'returntoplay') {
+            latestResult = state.lastSessionResult;
+        }
+
+        if (!latestResult) {
+            latestResult = generateReturnToPlayResult();
+        }
+        
+        if (!latestResult) {
+            return `<div class="text-center py-10 text-gray-400">No "Return to Play" data found.</div>`;
+        }
+        
+        const { overall, categories, testType } = latestResult.result;
+
+        const topSectionHTML = `
+            <div class="text-center space-y-2 my-4">
+                <h2 class="text-2xl font-bold">Return to Play</h2>
+                <div class="relative w-24 h-24 mx-auto">
+                    <svg class="w-full h-full" viewBox="0 0 36 36">
+                        <path class="text-gray-700"
+                            stroke-dasharray="100, 100"
+                            d="M18 2.0845
+                            a 15.9155 15.9155 0 0 1 0 31.831
+                            a 15.9155 15.9155 0 0 1 0 -31.831"
+                            fill="none" stroke="currentColor" stroke-width="2" />
+                        <path class="text-emerald-500"
+                            stroke-dasharray="${overall.recoveryPercentage}, 100"
+                            d="M18 2.0845
+                            a 15.9155 15.9155 0 0 1 0 31.831
+                            a 15.9155 15.9155 0 0 1 0 -31.831"
+                            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                    </svg>
+                    <div class="absolute inset-0 flex items-center justify-center flex-col">
+                        <span class="text-2xl font-bold">${categories.filter(c => c.passed).length}/${categories.length}</span>
+                        <span class="text-xs text-gray-400">Passed</span>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        const renderBarChart = (left, right, injuredLimb, unit) => {
+            const lVal = parseFloat(left) || 0;
+            const rVal = parseFloat(right) || 0;
+            const max = Math.max(lVal, rVal, 1);
+            const lHeight = (lVal / max) * 100;
+            const rHeight = (rVal / max) * 100;
+
+            const lColor = injuredLimb === 'Left' ? 'bg-red-500' : 'bg-blue-500';
+            const rColor = injuredLimb === 'Right' ? 'bg-red-500' : 'bg-blue-500';
+
+            const fmt = v => (v % 1 ? v.toFixed(2) : v.toFixed(0));
+
+            return `
+                <div class="flex justify-center items-end gap-3 h-24">
+                <div class="w-1/3 h-full flex flex-col justify-end items-center">
+                    <div class="w-full ${lColor} rounded-t" style="height:${lHeight}%"></div>
+                    <div class="text-xs mt-1">L: ${fmt(lVal)}${unit ? ` ${unit}` : ''}</div>
+                </div>
+                <div class="w-1/3 h-full flex flex-col justify-end items-center">
+                    <div class="w-full ${rColor} rounded-t" style="height:${rHeight}%"></div>
+                    <div class="text-xs mt-1">R: ${fmt(rVal)}${unit ? ` ${unit}` : ''}</div>
+                </div>
+                </div>
+            `;
+        };
+
+        const collapsibleCardsHTML = categories.map(cat => {
+            const categoryId = cat.name.replace(/\s+/g, '-');
+            const summaryContent = `
+                <div>
+                        <h4 class="font-semibold text-white">${cat.name}</h4>
+                        <p class="text-xs text-gray-400">${cat.testName}</p>
+                </div>
+                <div class="flex items-center gap-3 pl-4">
+                    <span class="text-sm font-semibold ${cat.passed ? 'text-emerald-400' : 'text-red-400'}">${cat.passed ? 'Passed' : 'Not passed'}</span>
+                    <i data-lucide="chevron-down" class="w-5 h-5 text-gray-400 transition-transform duration-300"></i>
+                </div>
+            `;
+            
+            const summary = `<summary class="p-4 cursor-pointer flex justify-between items-center">${summaryContent}</summary>`;
+
+            const cardContent = `
+                <div class="flex items-start gap-4 p-4">
+                    <div class="w-28 shrink-0">
+                    ${testType === 'Rehab' ? `
+                        <p class="text-xs text-gray-400">Recovery</p>
+                        <p class="text-4xl font-bold ${cat.passed ? 'text-emerald-400' : 'text-red-400'}">${cat.recovery}%</p>
+                        <p class="text-xs text-gray-400 mt-2">Diff</p>
+                        <p class="font-semibold">${cat.diff}</p>
+                    ` : `
+                        <p class="text-xs text-gray-400">Mode</p>
+                        <p class="text-sm font-semibold text-gray-200">Baseline</p>
+                    `}
+                    </div>
+                    <div class="flex-1 relative">
+                    ${renderBarChart(cat.details.l, cat.details.r, cat.details.injured, cat.unit)}
+                    ${testType === 'Rehab' ? `
+                        <div class="absolute z-10 right-0 text-xs text-gray-400 border-b border-dashed border-gray-600 w-11/12 text-right" style="top: 10%;">
+                        90%
+                        </div>` : ``}
+                    </div>
+                </div>
+            `;
+
+            return `
+                <div class="bg-[#1a1c1f] border border-gray-800 rounded-xl overflow-hidden">
+                    <details class="results-card" data-protocol="returntoplay" data-category="${cat.name}">
+                        ${summary}
+                        <div class="border-t border-gray-700/50">
+                            <div class="tab-btn-container flex border-b border-gray-700">
+                                <button class="tab-btn active px-4 py-2 text-sm font-medium text-white border-b-2 border-emerald-500" data-target="result-${categoryId}">Result</button>
+                                ${state.selectedClient ? `<button class="tab-btn px-4 py-2 text-sm font-medium text-gray-400 border-b-2 border-transparent" data-target="history-${categoryId}">History</button>` : ''}
+                            </div>
+                            <div id="result-${categoryId}" class="tab-content active">${cardContent}</div>
+                            ${state.selectedClient ? `<div id="history-${categoryId}" class="tab-content hidden p-4"><canvas id="chart-rtp-${categoryId}"></canvas></div>` : ''}
+                        </div>
+                    </details>
+                </div>
+            `;
+        }).join('');
+
+        return `
+            <div class="my-4 space-y-4">
+                ${topSectionHTML}
+                ${collapsibleCardsHTML}
+            </div>`;
+    }
+
+    function renderShoulderScreeningResults() {
+        let latestResult;
+        if (state.selectedClient && state.selectedClient.history) {
+            latestResult = state.selectedClient.history
+                .slice()
+                .reverse()
+                .find(h => h.protocolId === 'shouldertest');
+        } else if (state.lastSessionResult && state.lastSessionResult.protocolId === 'shouldertest') {
+            latestResult = state.lastSessionResult;
+        }
+
+        if (!latestResult) {
+            latestResult = generateShoulderScreeningResult();
+        }
+
+        if (!latestResult || !latestResult.result || !latestResult.result.tests) {
+            return '<p class="text-center text-gray-500 py-8">No Shoulder Screening data available.</p>';
+        }
+
+        const testCardsHTML = latestResult.result.tests.map(test => {
+            const testId = test.name.replace(/\s+/g, '-');
+            return `
+                <details class="bg-[#1a1c1f] border border-gray-800 rounded-xl overflow-hidden results-card" data-protocol="shouldertest" data-category="${test.name}">
+                    <summary class="p-4 cursor-pointer flex justify-between items-center hover:bg-white/5">
+                        <h3 class="font-semibold text-white">${test.name} - Asymmetry</h3>
+                        <i data-lucide="chevron-down" class="w-5 h-5 text-gray-400 transition-transform duration-300"></i>
+                    </summary>
+                    <div class="border-t border-gray-700/50">
+                        <div class="tab-btn-container flex border-b border-gray-700">
+                            <button class="tab-btn active px-4 py-2 text-sm font-medium text-white border-b-2 border-emerald-500" data-target="result-${testId}">Result</button>
+                            ${state.selectedClient ? `<button class="tab-btn px-4 py-2 text-sm font-medium text-gray-400 border-b-2 border-transparent" data-target="history-${testId}">History</button>` : ''}
+                        </div>
+
+                        <div id="result-${testId}" class="tab-content active p-4 grid grid-cols-1 gap-6">
+                            <div>
+                                <h4 class="font-semibold text-base mb-2 text-center text-gray-200">Asymmetry Graphic</h4>
+                                ${renderShoulderAsymmetryChart(test)}
+                            </div>
+                            <div>
+                                <h4 class="font-semibold text-base mb-2 text-center text-gray-200">Normative Comparison</h4>
+                                ${renderNormativeComparisonChart(test)}
+                            </div>
+                        </div>
+
+                        ${state.selectedClient ? `<div id="history-${testId}" class="tab-content hidden p-4"><canvas id="chart-shoulder-${testId}"></canvas></div>` : ''}
+                    </div>
+                </details>
+            `;
+        }).join('');
+
+        return `<div class="my-4 space-y-3">${testCardsHTML}</div>`;
+    }
+
+    function renderShoulderAsymmetryChart(testData) {
+        const metrics = [
+            { name: 'Max Force (N)', key: 'maxForce', unit: 'N' },
+            { name: 'RFD 100ms (N/s)', key: 'rfd', unit: 'N/s' },
+            { name: '% Max @ 100ms (%)', key: 'max100', unit: '%' },
+        ];
+        
+        const barsHTML = metrics.map(metric => {
+            const leftVal = parseFloat(testData.values.left[metric.key]);
+            const rightVal = parseFloat(testData.values.right[metric.key]);
+            const asymmetry = testData.asymmetry[metric.key];
+            const maxVal = Math.max(leftVal, rightVal, 1) * 1.2;
+
+            const leftHeight = (leftVal / maxVal) * 100;
+            const rightHeight = (rightVal / maxVal) * 100;
+
+            return `
+                <div class="flex-1 flex flex-col items-center">
+                    <p class="text-sm font-semibold mb-1">${asymmetry}%</p>
+                    <div class="w-full flex justify-center items-end gap-1 h-32 border-b-2 border-gray-600">
+                        <div class="w-1/3 bg-blue-500 rounded-t" style="height: ${leftHeight}%" title="Left: ${leftVal} ${metric.unit}"></div>
+                        <div class="w-1/3 bg-orange-500 rounded-t" style="height: ${rightHeight}%" title="Right: ${rightVal} ${metric.unit}"></div>
+                    </div>
+                    <p class="text-xs text-gray-400 mt-2 text-center">${metric.name}</p>
+                    <div class="flex w-full justify-around text-xs mt-1">
+                        <span>${leftVal.toFixed(0)}</span>
+                        <span>${rightVal.toFixed(0)}</span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        return `<div class="flex gap-4 items-start">${barsHTML}</div>`;
+    }
+
+    function renderNormativeComparisonChart(testData) {
+        const { left, right, avg } = testData.normative;
+        const min = avg * 0.5;
+        const max = avg * 1.5;
+        
+        const leftPos = ((left - min) / (max - min)) * 100;
+        const rightPos = ((right - min) / (max - min)) * 100;
+        const avgPos = ((avg - min) / (max - min)) * 100;
+
+        return `
+            <div class="relative w-full h-48 p-4 pt-8 bg-gray-900/50 rounded-lg">
+                <svg class="absolute bottom-4 left-0 w-full h-24" preserveAspectRatio="none">
+                    <defs>
+                        <linearGradient id="bell-curve-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                            <stop offset="0%" style="stop-color:rgba(239, 68, 68, 0.2)" />
+                            <stop offset="25%" style="stop-color:rgba(234, 179, 8, 0.3)" />
+                            <stop offset="50%" style="stop-color:rgba(16, 185, 129, 0.4)" />
+                            <stop offset="75%" style="stop-color:rgba(234, 179, 8, 0.3)" />
+                            <stop offset="100%" style="stop-color:rgba(239, 68, 68, 0.2)" />
+                        </linearGradient>
+                    </defs>
+                    <path d="M0,100 C50,0 150,0 200,100 Z" fill="url(#bell-curve-gradient)" transform="scale(1.5, 1)" stroke="#4b5563" stroke-width="1"></path>
+                </svg>
+
+                <div class="absolute bottom-4 h-24 w-full">
+                    <div class="absolute bottom-0 h-full border-l-2 border-dashed border-gray-400" style="left: ${avgPos}%"></div>
+
+                    <div class="absolute bottom-0 h-1/2 border-l-2 border-blue-400" style="left: ${leftPos}%">
+                        <span class="absolute -top-5 -translate-x-1/2 text-xs text-blue-300">L</span>
+                    </div>
+
+                    <div class="absolute bottom-0 h-1/2 border-l-2 border-orange-400" style="left: ${rightPos}%">
+                        <span class="absolute -top-5 -translate-x-1/2 text-xs text-orange-300">R</span>
+                    </div>
+                </div>
+                <div class="absolute bottom-0 left-0 w-full flex justify-between text-xs text-gray-500 px-2">
+                    <span>Poor</span>
+                    <span>Average</span>
+                    <span>Excellent</span>
+                </div>
+                <div class="text-center text-xs text-gray-200 absolute top-2 left-1/2 -translate-x-1/2">
+                    Left: ${left} N/kg | Right: ${right} N/kg
+                </div>
+            </div>
+        `;
+    }
+
+    function renderClientDetailView() {
+        const container = document.getElementById('clientDetail-view');
+        if (!state.selectedClient) { navigate('clients'); return; }
+        
+        const historyItems = state.selectedClient.history.slice().reverse().map(h => {
+                const protocol = mockData.protocols.find(p => p.id === h.protocolId);
+                let detailsHTML = '';
+                if(h.protocolId === 'fitnessage') {
+                    detailsHTML = Object.entries(h.details).map(([key, value]) => 
+                        `<button onclick="showAnalysisChart('${key}')" class="bg-white/5 text-gray-300 text-xs px-2 py-1 rounded transition hover:bg-white/10">
+                            📈 ${key}: ${value}
+                        </button>`
+                    ).join('');
+                } else if (h.protocolId === 'seniorfitness') {
+                    detailsHTML = `<button onclick="viewSeniorFitnessDetailFromHistory(${JSON.stringify(h).replace(/"/g, '&quot;')})" class="bg-white/5 text-gray-300 text-xs px-2 py-1 rounded transition hover:bg-white/10">
+                                        View Details
+                                    </button>`;
+                } else if (h.protocolId === 'shouldertest') {
+                    detailsHTML = `<button onclick="viewShoulderScreeningDetailFromHistory(${JSON.stringify(h).replace(/"/g, '&quot;')})" class="bg-white/5 text-gray-300 text-xs px-2 py-1 rounded transition hover:bg-white/10">
+                                        View Report
+                                    </button>`;
+                }
+
+
+                return `
+                    <div class="bg-[#1a1c1f] border border-gray-800 p-4 rounded-xl mb-3">
+                        <div class="flex justify-between items-center mb-3">
+                            <h4 class="font-semibold text-white tracking-wide">${protocol.name}</h4>
+                            <span class="text-gray-500 text-sm font-mono">${h.date}</span>
+                        </div>
+                        ${ detailsHTML ? `<div class="flex flex-wrap gap-2">${detailsHTML}</div>` : '' }
+                    </div>
+                `;
+            }).join('');
+
+        container.innerHTML = `
+            <div class="w-full sticky top-0 z-40 bg-[#0b0d0f] border-b border-gray-800">
+                <div class="max-w-sm mx-auto px-4 py-3 flex items-center justify-between">
+                    <div class="w-8"></div>
+                    <h2 class="text-white text-lg font-semibold tracking-tight">${state.selectedClient.name}</h2>
+                    <div class="flex items-center gap-2">
+                        <button class="p-2 rounded-full bg-gray-800/50 text-gray-300 border border-gray-700">
+                            <i data-lucide="moon" class="w-4 h-4"></i>
+                        </button>
+                        <button class="burger-menu-btn p-2 rounded-full bg-gray-800/50 text-gray-300 border border-gray-700">
+                            <i data-lucide="menu" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="max-w-sm mx-auto px-4 mt-6 pb-6">
+                <div class="w-full rounded-xl border p-3 flex items-center justify-between border-emerald-400/50 bg-emerald-900/20 mb-6">
+                    <div class="text-gray-200 text-sm">
+                        <span class="font-medium text-white">${state.selectedClient.name}</span> is selected
+                    </div>
+                    <button onclick="confirmSignOut()" class="ml-3 px-3 py-1.5 rounded-xl border border-red-400/40 text-red-300 text-xs bg-red-900/30 hover:bg-red-900/50">Sign out</button>
+                </div>
+                <div class="bg-[#1a1c1f] border border-gray-800 p-4 rounded-xl mb-6">
+                    <h3 class="text-gray-400 text-sm mb-2 tracking-widest">FITNESS AGE - PROGRESS</h3>
+                    <div>
+                        <canvas id="fitness-age-chart"></canvas>
+                    </div>
+                </div>
+                <h3 class="font-bold text-lg mb-2 text-gray-100">Test History</h3>
+                ${(historyItems.length > 0) ? historyItems : '<p class="text-center text-gray-500 py-8">No test history found for this client.</p>'}
+            </div>
+        `;
+    if (state.selectedClient.history && state.selectedClient.history.length > 0) {
+        renderFitnessAgeChart();
+    }
+    }
+    
+    function viewSeniorFitnessDetailFromHistory(historyItem) {
+        state.lastSessionResult = historyItem;
+        state.activeProtocol = 'seniorfitness'; // ensure protocol is set
+        navigate('results');
+    }
+
+    function viewShoulderScreeningDetailFromHistory(historyItem) {
+        state.lastSessionResult = historyItem;
+        state.activeProtocol = 'shouldertest';
+        navigate('results');
+    }
+
+    // --- CHART FUNCTIONS ---
+    function renderFitnessAgeChart() {
+        if (!state.selectedClient) return;
+        const ctx = document.getElementById('fitness-age-chart').getContext('2d');
+        if (!ctx) return;
+        const fitnessAgeHistory = state.selectedClient.history.filter(h => h.protocolId === 'fitnessage');
+
+        if(fitnessAgeHistory.length === 0) return;
+
+        const data = {
+            labels: fitnessAgeHistory.map(h => new Date(h.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })),
+            datasets: [{
+                label: 'Fitness Age',
+                data: fitnessAgeHistory.map(h => h.result.fitnessAge),
+                borderColor: '#10b981',
+                backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                fill: true,
+                tension: 0.3,
+            }]
+        };
+        if (state.currentChart) {
+            state.currentChart.destroy();
+        }
+        state.currentChart = new Chart(ctx, {
+            type: 'line',
+            data: data,
+            options: chartOptions('Fitness Age')
+        });
+    }
+
+    function showAnalysisChart(metric) {
+        if (!state.selectedClient) return;
+        openAnalysisModal();
+        
+        const modalTitle = document.getElementById('analysis-modal-title');
+        modalTitle.textContent = `Progress: ${metric}`;
+
+        const ctx = document.getElementById('analysis-chart').getContext('2d');
+        const data = {
+            labels: state.selectedClient.history.map(h => new Date(h.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })),
+            datasets: [{
+                label: metric,
+                data: state.selectedClient.history.map(h => parseFloat(h.details[metric])),
+                borderColor: '#3b82f6', // blue-500
+                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                fill: true,
+                tension: 0.3,
+            }]
+        };
+
+        if (state.currentChart) {
+            state.currentChart.destroy();
+        }
+        state.currentChart = new Chart(ctx, {
+            type: 'line',
+            data: data,
+            options: chartOptions(metric)
+        });
+    }
+
+    function renderRtpHistoryChart(categoryName, canvasId) {
+        if (!state.selectedClient) return;
+
+        const historyData = state.selectedClient.history.filter(h => h.protocolId === 'returntoplay');
+        const ctx = document.getElementById(canvasId)?.getContext('2d');
+        if (!ctx) return;
+
+        // Clear previous chart if it exists
+        const existingChart = Chart.getChart(ctx.canvas);
+        if (existingChart) {
+            existingChart.destroy();
+        }
+        ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+
+        if (historyData.length < 2) {
+            ctx.font = "14px Inter";
+            ctx.fillStyle = "#9ca3af"; // gray-400
+            ctx.textAlign = "center";
+            ctx.fillText(`Not enough history data to draw a chart.`, ctx.canvas.width / 2, 50);
+            return;
+        }
+
+        const labels = historyData.map(h => new Date(h.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+        const dataPoints = historyData.map(h => {
+            const category = h.result.categories.find(c => c.name === categoryName);
+            return category ? category.recovery : null;
+        }).filter(d => d !== null);
+
+        const data = {
+            labels: labels,
+            datasets: [{
+                label: `${categoryName} Recovery %`,
+                data: dataPoints,
+                borderColor: '#3b82f6', // blue-500
+                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                fill: true,
+                tension: 0.3,
+            }]
+        };
+
+        new Chart(ctx, {
+            type: 'line',
+            data: data,
+            options: chartOptions(categoryName)
+        });
+    }
+
+    function renderShoulderHistoryChart(testName, canvasId) {
+        if (!state.selectedClient) return;
+
+        const historyData = state.selectedClient.history.filter(h => h.protocolId === 'shouldertest');
+        const ctx = document.getElementById(canvasId)?.getContext('2d');
+        if (!ctx) return;
+        
+        const existingChart = Chart.getChart(ctx.canvas);
+        if (existingChart) existingChart.destroy();
+        ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+        if (historyData.length < 2) {
+            ctx.font = "14px Inter";
+            ctx.fillStyle = "#9ca3af";
+            ctx.textAlign = "center";
+            ctx.fillText("Not enough history to draw a chart.", ctx.canvas.width / 2, 50);
+            return;
+        }
+
+        const labels = historyData.map(h => new Date(h.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+        
+        const datasets = [
+            {
+                label: 'Max Force Asymmetry (%)',
+                key: 'maxForce',
+                borderColor: '#3b82f6', // blue-500
+            },
+            {
+                label: 'RFD Asymmetry (%)',
+                key: 'rfd',
+                borderColor: '#10b981', // emerald-500
+            },
+            {
+                label: '% Max @ 100ms Asymmetry (%)',
+                key: 'max100',
+                borderColor: '#f59e0b', // amber-500
+            }
+        ].map(metric => ({
+            label: metric.label,
+            data: historyData.map(h => {
+                const test = h.result.tests.find(t => t.name === testName);
+                return test ? test.asymmetry[metric.key] : null;
+            }).filter(d => d !== null),
+            borderColor: metric.borderColor,
+            backgroundColor: `${metric.borderColor}1A`, // Add alpha for fill
+            fill: true,
+            tension: 0.3,
+        }));
+        
+        new Chart(ctx, {
+            type: 'line',
+            data: { labels, datasets },
+            options: {
+                ...chartOptions(testName),
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'bottom',
+                        labels: { color: 'rgb(156 163 175)' }
+                    }
+                }
+            }
+        });
+    }
+    
+    function showRtpAnalysis(categoryName) {
+        if (!state.selectedClient) return;
+
+        const detailsElement = event.currentTarget.closest('details');
+        if (!detailsElement) return;
+
+        if (!detailsElement.open) {
+            detailsElement.open = true;
+            const historyTab = detailsElement.querySelector('.tab-btn[data-target^="history-"]');
+            if (historyTab) historyTab.click();
+        } else {
+            const historyContent = detailsElement.querySelector(`[id^="history-"]`);
+            if (historyContent && !historyContent.classList.contains('hidden')) {
+                detailsElement.open = false;
+                return;
+            } else {
+                const historyTab = detailsElement.querySelector('.tab-btn[data-target^="history-"]');
+                if (historyTab) historyTab.click();
+            }
+        }
+    }
+
+    function showSeniorFitnessAnalysis(metricName) {
+        if (!state.selectedClient) return;
+        
+        const historyData = state.selectedClient.history.filter(h => h.protocolId === 'seniorfitness');
+        if (historyData.length < 2) {
+            showToast(`Not enough history data for ${metricName}.`, 'error');
+            return;
+        }
+
+        openAnalysisModal();
+        
+        const modalTitle = document.getElementById('analysis-modal-title');
+        modalTitle.textContent = `Progress: ${metricName}`;
+
+        const ctx = document.getElementById('analysis-chart').getContext('2d');
+        const data = {
+            labels: historyData.map(h => new Date(h.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })),
+            datasets: [{
+                label: metricName,
+                data: historyData.map(h => {
+                    if (h.result && h.result.details && h.result.details[metricName]) {
+                        // Extract the first number found in the value string
+                        const match = h.result.details[metricName].value.match(/(\d+(\.\d+)?)/);
+                        return match ? parseFloat(match[0]) : null;
+                    }
+                    return null;
+                }).filter(v => v !== null), // Filter out null values if a test wasn't performed
+                borderColor: '#3b82f6', // blue-500
+                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                fill: true,
+                tension: 0.3,
+            }]
+        };
+
+        if (state.currentChart) {
+            state.currentChart.destroy();
+        }
+        state.currentChart = new Chart(ctx, {
+            type: 'line',
+            data: data,
+            options: chartOptions(metricName)
+        });
+    }
+    
+    const chartOptions = (title) => ({
+        responsive: true,
+        maintainAspectRatio: true,
+        plugins: {
+            legend: { display: false },
+            title: { display: false }
+        },
+        scales: {
+            x: {
+                ticks: { color: 'rgb(156 163 175)' }, // gray-400
+                grid: { color: 'rgba(55, 65, 81, 1)' } // gray-700
+            },
+            y: {
+                ticks: { color: 'rgb(156 163 175)' }, // gray-400
+                grid: { color: 'rgba(55, 65, 81, 1)' }, // gray-700
+                beginAtZero: false
+            }
+        }
+    });
+
+    // --- MODAL & TOAST RENDERERS ---
+    function openToolboxModal() { state.toolboxModalOpen = true; render(); }
+    function closeToolboxModal() { state.toolboxModalOpen = false; render(); }
+    function openLinkClientModal() { 
+        state.linkClientModalOpen = true; 
+        render(); 
+    }
+    function closeLinkClientModal() { 
+        state.linkClientModalOpen = false; 
+        const modalSearchInput = document.getElementById('modal-client-search-input');
+        if (modalSearchInput) modalSearchInput.value = '';
+        const modalSearchResults = document.getElementById('modal-client-search-results');
+        if (modalSearchResults) modalSearchResults.innerHTML = '';
+        render();
+    }
+    function openHistoryModal() {
+        if (!state.selectedClient) return;
+        
+        const contentContainer = document.getElementById('history-modal-content');
+        const title = document.getElementById('history-modal-title');
+        
+        title.textContent = `History for ${state.selectedClient.name}`;
+
+        if (!state.selectedClient.history || state.selectedClient.history.length === 0) {
+            contentContainer.innerHTML = `<p class="text-center text-gray-500 py-8">No test history found for this client.</p>`;
+            state.historyModalOpen = true;
+            render();
+            return;
+        }
+
+        const historyItems = state.selectedClient.history.slice().reverse().map(h => {
+            const protocol = mockData.protocols.find(p => p.id === h.protocolId);
+            const details = Object.entries(h.details).map(([key, value]) => 
+                `<span class="bg-gray-800/50 text-gray-300 text-xs px-2 py-1 rounded">
+                    ${key}: ${value}
+                </span>`
+            ).join('');
+            return `
+                <div class="bg-[#1a1c1f] border border-gray-800 p-3 rounded-xl">
+                    <div class="flex justify-between items-center mb-2">
+                        <h4 class="font-semibold text-white tracking-wide">${protocol.name}</h4>
+                        <span class="text-gray-500 text-sm font-mono">${h.date}</span>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        ${details}
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        contentContainer.innerHTML = historyItems;
+        state.historyModalOpen = true;
+        render();
+    }
+
+    function closeHistoryModal() {
+        state.historyModalOpen = false;
+        render();
+    }
+
+    function openAddClientModalAndCloseLinkModal() {
+        const searchInput = document.getElementById('modal-client-search-input');
+        const searchQuery = searchInput ? searchInput.value.trim() : '';
+
+        closeLinkClientModal();
+        openAddClientModal();
+
+        // Use a timeout to ensure the modal DOM is rendered before trying to populate it.
+        setTimeout(() => {
+            // Only populate if the search query is purely numeric (allowing for spaces)
+            if (searchQuery && /^\d+$/.test(searchQuery.replace(/\s/g, ''))) {
+                const phoneInput = document.getElementById('add-client-phone');
+                if (phoneInput) {
+                    let phoneNumber = searchQuery.replace(/\s/g, '');
+                    // The input field in the form doesn't take the country code
+                    if (phoneNumber.startsWith('47')) {
+                        phoneNumber = phoneNumber.substring(2);
+                    }
+                    phoneInput.value = phoneNumber;
+                    validateNewClientForm(); // Update the button state
+                }
+            }
+        }, 10);
+    }
+    function openScheduleModal() { state.scheduleModalOpen = true; render(); }
+    function closeScheduleModal() { state.scheduleModalOpen = false; render(); }
+    function openAddClientModal() { state.addClientModalOpen = true; render(); }
+    function closeAddClientModal() { 
+        state.addClientModalOpen = false;
+        document.getElementById('add-client-age').value = '';
+        document.getElementById('add-client-phone').value = '';
+        const genderSelector = document.getElementById('gender-selector');
+        if (genderSelector) {
+            genderSelector.querySelectorAll('.gender-btn').forEach(b => b.classList.remove('selected'));
+        }
+        const sendBtn = document.getElementById('create-and-link-btn');
+        if(sendBtn){
+            sendBtn.disabled = true;
+            sendBtn.classList.add('opacity-50', 'cursor-not-allowed');
+        }
+        render();
+    }
+    function openAnalysisModal() { state.analysisModalOpen = true; render(); }
+    function closeAnalysisModal() { 
+        if (state.currentChart) {
+            state.currentChart.destroy();
+            state.currentChart = null;
+        }
+        state.analysisModalOpen = false; 
+        render(); 
+    }
+    
+    function openConfirmationModal({ message, confirmText = 'Confirm', onConfirm }) {
+        state.confirmationModal = { isOpen: true, message, confirmText, onConfirm };
+        
+        const modal = document.getElementById('confirmation-modal');
+        modal.querySelector('#confirmation-message').textContent = message;
+        modal.querySelector('#confirmation-confirm-btn').textContent = confirmText;
+        
+        render();
+    }
+
+    function closeConfirmationModal() {
+        state.confirmationModal = { isOpen: false, message: '', confirmText: 'Confirm', onConfirm: () => {} };
+        render();
+    }
+    
+    function confirmSignOut() {
+        openConfirmationModal({
+            message: 'Are you sure you want to sign out the current client?',
+            confirmText: 'Yes, Sign Out',
+            onConfirm: deselectClient
+        });
+    }
+
+    function handleScheduleNow() {
+        const sessionTime = document.getElementById('session-datetime').value;
+        if (!sessionTime) {
+            showToast('Please select a date and time.', 'error');
+            return;
+        }
+        const formattedDate = new Date(sessionTime).toLocaleString('en-US');
+        showToast(`Appointment scheduled for ${formattedDate}. Notifications sent.`);
+        closeScheduleModal();
+    }
+
+    function handleScheduleLater() {
+        showToast('Reminder set for you to schedule the follow-up later.');
+        closeScheduleModal();
+    }
+
+    function showToast(message, type = 'success') {
+        const toast = document.getElementById('toast-notification');
+        const messageEl = document.getElementById('toast-message');
+        const iconContainer = document.getElementById('toast-icon-container');
+        const dismissBtn = document.getElementById('toast-dismiss-btn');
+
+        messageEl.textContent = message;
+
+        // Set icon and button color based on type
+        if (type === 'error') {
+            iconContainer.innerHTML = `<div class="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center mx-auto"><i data-lucide="alert-circle" class="w-8 h-8 text-red-400"></i></div>`;
+            dismissBtn.classList.remove('bg-emerald-600', 'hover:bg-emerald-500');
+            dismissBtn.classList.add('bg-red-600', 'hover:bg-red-500');
+        } else { // success
+            iconContainer.innerHTML = `<div class="w-12 h-12 rounded-full bg-emerald-500/20 flex items-center justify-center mx-auto"><i data-lucide="check-circle" class="w-8 h-8 text-emerald-400"></i></div>`;
+            dismissBtn.classList.remove('bg-red-600', 'hover:bg-red-500');
+            dismissBtn.classList.add('bg-emerald-600', 'hover:bg-emerald-500');
+        }
+        
+        toast.classList.remove('hidden');
+        toast.classList.add('flex'); // It's a flex container now
+
+        lucide.createIcons();
+    }
+    
+    function hideToast() {
+        const toast = document.getElementById('toast-notification');
+        toast.classList.add('hidden');
+        toast.classList.remove('flex');
+    }
+
+    function renderReturnToPlayInputView() {
+        const container = document.getElementById('returntoplay-input-view');
+        
+        const headerHTML = `
+            <header class="absolute w-full top-0 z-40 bg-[#0b0d0f] border-b border-gray-800">
+                <div class="max-w-sm mx-auto px-4 py-3 flex items-center justify-between">
+                    <button onclick="navigate('protocols')" class="p-2 -ml-2 rounded-full text-gray-300 hover:bg-white/10">
+                        <i data-lucide="arrow-left" class="w-5 h-5"></i>
+                    </button>
+                    <h2 class="text-white text-lg font-semibold tracking-tight">Return to Play Setup</h2>
+                    <div class="w-8"></div>
+                </div>
+            </header>`;
+
+        const sports = [
+            "Football", "Cross-country skiing", "Handball", "Swimming", "Golf", "Athletics", 
+            "Alpine skiing", "Biathlon", "Ski jumping", "Ice hockey", "Gymnastics", "Cycling", 
+            "Running", "Orienteering", "Other snow sports", "Climbing", "Water sports", 
+            "Ski touring", "Floorball", "Other team sports", "Other"
+        ];
+        const sportsOptionsHTML = sports.map(sport => `<option value="${sport}">${sport}</option>`).join('');
+
+        container.innerHTML = `
+            ${headerHTML}
+            <main class="pt-24 pb-24 h-full overflow-y-auto">
+                <div class="max-w-sm mx-auto px-4 space-y-6">
+                    <div class="step-container">
+                        <label class="text-sm text-gray-400 mb-2 block">1. What kind of test is this?</label>
+                        <div id="rtp-test-type" class="grid grid-cols-2 gap-2">
+                            <button data-value="Baseline" class="input-btn bg-[#1a1c1f] border border-gray-700 text-gray-100 py-3 rounded-lg transition">Baseline</button>
+                            <button data-value="Rehab" class="input-btn bg-[#1a1c1f] border border-gray-700 text-gray-100 py-3 rounded-lg transition">Rehab</button>
+                        </div>
+                    </div>
+
+                    <div id="rtp-limb-selection-container" class="step-container hidden">
+                        <label class="text-sm text-gray-400 mb-2 block">2. Which limb is injured?</label>
+                        <div id="rtp-injured-limb" class="grid grid-cols-2 gap-2">
+                            <button data-value="Left" class="input-btn bg-[#1a1c1f] border border-gray-700 text-gray-100 py-3 rounded-lg transition">Left</button>
+                            <button data-value="Right" class="input-btn bg-[#1a1c1f] border border-gray-700 text-gray-100 py-3 rounded-lg transition">Right</button>
+                        </div>
+                    </div>
+                    
+                    <div id="rtp-sport-selection-container" class="step-container hidden">
+                        <label for="rtp-sport-select" class="text-sm text-gray-400 mb-2 block">3. What is the primary sport?</label>
+                        <div class="relative">
+                            <select id="rtp-sport-select" class="w-full px-3 py-3 rounded-xl bg-[#1a1c1f] border border-gray-700 text-gray-100 placeholder-gray-500" style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2724%27 height=%2724%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27%239ca3af%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3e%3cpolyline points=%276 9 12 15 18 9%27/%3e%3c/svg%3e'); background-repeat: no-repeat; background-position: right 0.75rem center; background-size: 1.5em 1.5em;">
+                                <option value="">Select sport...</option>
+                                ${sportsOptionsHTML}
+                            </select>
+                        </div>
+                    </div>
+
+                    <button id="start-rtp-protocol-btn" disabled class="w-full mt-8 px-4 py-3 rounded-xl bg-emerald-600 text-white font-bold opacity-50 cursor-not-allowed">
+                        Start Protocol
+                    </button>
+                </div>
+            </main>
+        `;
+        
+        // Add event listeners for the new buttons
+        document.querySelectorAll('#rtp-test-type .input-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const parent = e.target.parentElement;
+                parent.querySelectorAll('.input-btn').forEach(b => b.classList.remove('selected'));
+                e.target.classList.add('selected');
+                
+                const limbContainer = document.getElementById('rtp-limb-selection-container');
+                const sportContainer = document.getElementById('rtp-sport-selection-container');
+                
+                if (e.target.dataset.value === 'Rehab') {
+                    limbContainer.classList.remove('hidden');
+                    sportContainer.classList.add('hidden'); // Hide sport until limb is selected
+                    // Clear limb selection if user switches back and forth
+                    document.querySelectorAll('#rtp-injured-limb .input-btn').forEach(b => b.classList.remove('selected'));
+                    // Clear sport selection
+                    document.getElementById('rtp-sport-select').value = '';
+                } else { // Baseline
+                    limbContainer.classList.add('hidden');
+                    sportContainer.classList.remove('hidden');
+                }
+                validateRtpForm();
+            });
+        });
+
+        document.querySelectorAll('#rtp-injured-limb .input-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const parent = e.target.parentElement;
+                parent.querySelectorAll('.input-btn').forEach(b => b.classList.remove('selected'));
+                e.target.classList.add('selected');
+                document.getElementById('rtp-sport-selection-container').classList.remove('hidden');
+                validateRtpForm();
+            });
+        });
+        
+        document.getElementById('rtp-sport-select').addEventListener('change', validateRtpForm);
+
+
+        document.getElementById('start-rtp-protocol-btn').onclick = startCoachModeForReturnToPlay;
+    }
+
+    function renderShoulderTestInputView() {
+        const container = document.getElementById('shouldertest-input-view');
+        
+        const headerHTML = `
+            <header class="absolute w-full top-0 z-40 bg-[#0b0d0f] border-b border-gray-800">
+                <div class="max-w-sm mx-auto px-4 py-3 flex items-center justify-between">
+                    <button onclick="navigate('protocols')" class="p-2 -ml-2 rounded-full text-gray-300 hover:bg-white/10">
+                        <i data-lucide="arrow-left" class="w-5 h-5"></i>
+                    </button>
+                    <h2 class="text-white text-lg font-semibold tracking-tight">Shoulder Screening Setup</h2>
+                    <div class="w-8"></div>
+                </div>
+            </header>`;
+
+        const sports = [
+            "Football", "Cross-country skiing", "Handball", "Swimming", "Golf", "Athletics", 
+            "Alpine skiing", "Biathlon", "Ski jumping", "Ice hockey", "Gymnastics", "Cycling", 
+            "Running", "Orienteering", "Other snow sports", "Climbing", "Water sports", 
+            "Ski touring", "Floorball", "Other team sports", "Other"
+        ];
+        const sportsOptionsHTML = sports.map(sport => `<option value="${sport}">${sport}</option>`).join('');
+
+        container.innerHTML = `
+            ${headerHTML}
+            <main class="pt-24 pb-24 h-full overflow-y-auto">
+                <div class="max-w-sm mx-auto px-4 space-y-6">
+                    <div class="step-container">
+                        <label class="text-sm text-gray-400 mb-2 block">1. What kind of test is this?</label>
+                        <div id="shoulder-test-type" class="grid grid-cols-2 gap-2">
+                            <button data-value="Baseline" class="input-btn bg-[#1a1c1f] border border-gray-700 text-gray-100 py-3 rounded-lg transition">Baseline</button>
+                            <button data-value="Rehab" class="input-btn bg-[#1a1c1f] border border-gray-700 text-gray-100 py-3 rounded-lg transition">Rehab</button>
+                        </div>
+                    </div>
+
+                    <div id="shoulder-limb-selection-container" class="step-container hidden">
+                        <label class="text-sm text-gray-400 mb-2 block">2. Which side is injured?</label>
+                        <div id="shoulder-injured-limb" class="grid grid-cols-2 gap-2">
+                            <button data-value="Left" class="input-btn bg-[#1a1c1f] border border-gray-700 text-gray-100 py-3 rounded-lg transition">Left</button>
+                            <button data-value="Right" class="input-btn bg-[#1a1c1f] border border-gray-700 text-gray-100 py-3 rounded-lg transition">Right</button>
+                        </div>
+                    </div>
+                    
+                    <div id="shoulder-sport-selection-container" class="step-container hidden">
+                        <label for="shoulder-sport-select" class="text-sm text-gray-400 mb-2 block">3. What is the primary sport?</label>
+                        <div class="relative">
+                            <select id="shoulder-sport-select" class="w-full px-3 py-3 rounded-xl bg-[#1a1c1f] border border-gray-700 text-gray-100 placeholder-gray-500" style="background-image: url('data:image/svg+xml;charset=US-ASCII,%3csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2724%27 height=%2724%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27%239ca3af%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3e%3cpolyline points=%276 9 12 15 18 9%27/%3e%3c/svg%3e'); background-repeat: no-repeat; background-position: right 0.75rem center; background-size: 1.5em 1.5em;">
+                                <option value="">Select sport...</option>
+                                ${sportsOptionsHTML}
+                            </select>
+                        </div>
+                    </div>
+
+                    <button id="start-shouldertest-protocol-btn" disabled class="w-full mt-8 px-4 py-3 rounded-xl bg-emerald-600 text-white font-bold opacity-50 cursor-not-allowed">
+                        Start Protocol
+                    </button>
+                </div>
+            </main>
+        `;
+        
+        document.querySelectorAll('#shoulder-test-type .input-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.target.parentElement.querySelectorAll('.input-btn').forEach(b => b.classList.remove('selected'));
+                e.target.classList.add('selected');
+                
+                const limbContainer = document.getElementById('shoulder-limb-selection-container');
+                const sportContainer = document.getElementById('shoulder-sport-selection-container');
+                
+                if (e.target.dataset.value === 'Rehab') {
+                    limbContainer.classList.remove('hidden');
+                    sportContainer.classList.add('hidden');
+                    document.querySelectorAll('#shoulder-injured-limb .input-btn').forEach(b => b.classList.remove('selected'));
+                    document.getElementById('shoulder-sport-select').value = '';
+                } else {
+                    limbContainer.classList.add('hidden');
+                    sportContainer.classList.remove('hidden');
+                }
+                validateShoulderTestForm();
+            });
+        });
+
+        document.querySelectorAll('#shoulder-injured-limb .input-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.target.parentElement.querySelectorAll('.input-btn').forEach(b => b.classList.remove('selected'));
+                e.target.classList.add('selected');
+                document.getElementById('shoulder-sport-selection-container').classList.remove('hidden');
+                validateShoulderTestForm();
+            });
+        });
+        
+        document.getElementById('shoulder-sport-select').addEventListener('change', validateShoulderTestForm);
+        document.getElementById('start-shouldertest-protocol-btn').onclick = startCoachModeForShoulderTest;
+    }
+
+
+    function validateRtpForm() {
+        const testType = document.querySelector('#rtp-test-type .selected');
+        const injuredLimb = document.querySelector('#rtp-injured-limb .selected');
+        const sportSelect = document.getElementById('rtp-sport-select');
+        const sport = sportSelect ? sportSelect.value : null;
+        const startBtn = document.getElementById('start-rtp-protocol-btn');
+
+        let isValid = false;
+        if (testType) {
+            if (testType.dataset.value === 'Rehab') {
+                if (injuredLimb && sport) {
+                    isValid = true;
+                }
+            } else { // Baseline
+                if (sport) {
+                    isValid = true;
+                }
+            }
+        }
+
+        if (startBtn) {
+            if (isValid) {
+                startBtn.disabled = false;
+                startBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            } else {
+                startBtn.disabled = true;
+                startBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            }
+        }
+    }
+
+    function validateShoulderTestForm() {
+        const testType = document.querySelector('#shoulder-test-type .selected');
+        const injuredLimb = document.querySelector('#shoulder-injured-limb .selected');
+        const sportSelect = document.getElementById('shoulder-sport-select');
+        const sport = sportSelect ? sportSelect.value : null;
+        const startBtn = document.getElementById('start-shouldertest-protocol-btn');
+
+        let isValid = false;
+        if (testType) {
+            if (testType.dataset.value === 'Rehab') {
+                if (injuredLimb && sport) {
+                    isValid = true;
+                }
+            } else { // Baseline
+                if (sport) {
+                    isValid = true;
+                }
+            }
+        }
+
+        if (startBtn) {
+            if (isValid) {
+                startBtn.disabled = false;
+                startBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            } else {
+                startBtn.disabled = true;
+                startBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            }
+        }
+    }
+
+    function startCoachModeForReturnToPlay() {
+        const testType = document.querySelector('#rtp-test-type .selected')?.dataset.value;
+        const injuredLimb = document.querySelector('#rtp-injured-limb .selected')?.dataset.value;
+        const sport = document.getElementById('rtp-sport-select')?.value;
+
+
+        if (!testType || (testType === 'Rehab' && !injuredLimb) || !sport) {
+            showToast('Please complete all steps.', 'error');
+            return;
+        }
+
+        state.returnToPlaySettings = { testType, injuredLimb: injuredLimb || null, sport };
+        startCoachModeForProtocol('returntoplay');
+    }
+
+    function startCoachModeForShoulderTest() {
+        const testType = document.querySelector('#shoulder-test-type .selected')?.dataset.value;
+        const injuredLimb = document.querySelector('#shoulder-injured-limb .selected')?.dataset.value;
+        const sport = document.getElementById('shoulder-sport-select')?.value;
+
+        if (!testType || (testType === 'Rehab' && !injuredLimb) || !sport) {
+            showToast('Please complete all steps.', 'error');
+            return;
+        }
+
+        state.shoulderTestSettings = { testType, injuredLimb: injuredLimb || null, sport };
+        startCoachModeForProtocol('shouldertest');
+    }
+
+    function simulateTestResult() {
+        const progress = state.testProgress;
+        if (progress.phase !== 'active') return;
+
+        progress.phase = 'result';
+        const newResultValue = (progress.currentTest.includes('Balance') ? 80 + Math.random() * 15 : progress.currentTest === 'Jump' ? 30 + Math.random() * 15 : 85 + Math.random() * 5).toFixed(1);
+        const unit = progress.currentTest.includes('Balance') ? '%' : progress.currentTest === 'Jump' ? 'cm' : 'kg';
+        
+        const previousResultValue = progress.attempts.length > 0 ? progress.attempts[progress.attempts.length - 1].value : null;
+        let improvement = null;
+        if (previousResultValue !== null) {
+            improvement = (newResultValue - previousResultValue).toFixed(1);
+        }
+        const newAttempt = { value: newResultValue, unit, comment: 'Great effort!', improvement };
+        
+        progress.attempts.push(newAttempt);
+        progress.lastResult = newAttempt;
+        
+        render();
+    }
+    
+    function confirmShoesOff() {
+        if (state.activeProtocol === 'fitnessage' && state.fitnessAgeFlowState === 'shoesOffConfirmation') {
+            state.fitnessAgeFlowState = 'balanceRightInstruction';
+            updateTvScreen('fullscreen-video', {
+                src: TV_ASSETS['Balance Right'].instruction,
+                loop: true
+            });
+            render();
+        }
+    }
+
+
+    // --- EVENT HANDLERS & LOGIC ---
+    function navigate(view, forceSearch = false) {
+        if (view === 'clients' && state.selectedClient && !forceSearch) {
+            state.currentView = 'clientDetail';
+        } else {
+            state.currentView = view;
+        }
+        render();
+    }
+    
+    function deselectClient() {
+        state.selectedClient = null;
+        state.consentGiven = false;
+        if(state.currentView === 'clientDetail' || state.currentView === 'results' || state.currentView === 'coachMode') {
+            navigate('protocols');
+        } else {
+            render();
+        }
+        document.getElementById('tv-container').classList.remove('protocol-started');
+        state.fitnessAgeFlowState = 'idle';
+        updateTvScreen('idle');
+    }
+    
+    function finishSession() {
+        state.lastSessionResult = null;
+        state.activeProtocol = null;
+        deselectClient();
+        navigate('protocols');
+    }
+
+    function maskPhone(phone) {
+        if (!phone || phone.length < 4) return '•••';
+        return `••• ••• ${phone.slice(-3)}`;
+    }
+
+    function searchClients(event, resultsContainerId) {
+        const rawQuery = event.target.value;
+        const resultsContainer = document.getElementById(resultsContainerId);
+        
+        if (!rawQuery) {
+            resultsContainer.innerHTML = '';
+            return;
+        }
+
+        const clientEntries = Object.entries(mockData.clients);
+        const isNumericQuery = /^\d+$/.test(rawQuery.replace(/\s/g, ''));
+
+        const matches = clientEntries.filter(([phone, client]) => {
+            if (isNumericQuery) {
+                return phone.includes(rawQuery.replace(/\s/g, ''));
+            } else {
+                return client.name.toLowerCase().includes(rawQuery.toLowerCase());
+            }
+        });
+
+        const onclickFunction = resultsContainerId === 'modal-client-search-results' 
+            ? 'selectClientFromSearch' 
+            : 'selectClientFromHistoryPage';
+
+        if (matches.length > 0) {
+            resultsContainer.innerHTML = matches.map(([phone, client]) => {
+                return `<button onclick='${onclickFunction}(${JSON.stringify({phone, ...client})})' class="w-full text-left p-3 rounded-lg bg-[#1a1c1f] border border-gray-800 hover:bg-gray-800/50 transition">
+                            <p class="font-medium text-white">${client.name}</p>
+                            <p class="text-sm text-gray-400">${maskPhone(phone)}</p>
+                        </button>`;
+            }).join('');
+        } else {
+            resultsContainer.innerHTML = `<p class="text-center text-gray-500">No clients found.</p>`;
+        }
+    }
+
+    function selectClientFromHistoryPage(clientData) {
+        state.selectedClient = clientData;
+        state.consentGiven = true;
+        updateTvScreen('client-linked');
+        navigate('clientDetail');
+    }
+
+    function selectClientFromSearch(clientData) {
+        state.selectedClient = clientData;
+        state.consentGiven = true; // Consent is implied upon selection
+
+        if (state.lastSessionResult && state.currentView === 'results') {
+            if (!state.selectedClient.history) {
+                state.selectedClient.history = [];
+            }
+            state.selectedClient.history.push(state.lastSessionResult);
+            state.lastSessionResult = null;
+            render();
+        }
+        
+        updateTvScreen('client-linked');
+        closeLinkClientModal();
+    }
+    
+    function startProtocol(protocolId) {
+        const protocol = mockData.protocols.find(p => p.id === protocolId);
+        if (!protocol) return;
+
+        state.activeProtocol = protocolId;
+        
+        if (protocolId === 'fitnessage') {
+            document.getElementById('tv-container').classList.add('protocol-started');
+            state.fitnessAgeFlowState = 'stepOn'; // Change state here
+            updateTvScreen('fullscreen-video', { 
+                src: 'https://storage.googleapis.com/files_webpage/Instruction%20video%20(demo)/Step%20on.mp4',
+                loop: true
+            });
+            startCoachModeForProtocol('fitnessage', true);
+            return;
+        }
+
+        if(protocolId === 'returntoplay'){
+            navigate('returntoplay-input');
+            return;
+        } else if (protocolId === 'shouldertest') {
+            navigate('shouldertest-input');
+            return;
+        }
+        
+        startCoachModeForProtocol(protocolId);
+    }
+    
+    function startCoachModeForProtocol(protocolId, skipTvUpdate = false) {
+        const protocol = mockData.protocols.find(p => p.id === protocolId);
+        if (!protocol) return;
+
+        state.activeProtocol = protocolId;
+        state.testProgress = {
+            step: 0,
+            totalSteps: protocol.tests.length,
+            currentTest: protocol.tests[0],
+            phase: 'ready',
+            lastResult: null,
+            attempts: []
+        };
+        
+        if (!skipTvUpdate) {
+            updateTvScreen('instruction', { testName: protocol.tests[0] });
+        }
+        navigate('coachMode');
+    }
+    
+    function generateSeniorFitnessResult() {
+        const balanceScore = (Math.random() * 4) + 1;
+        const funktionScore = (Math.random() * 4) + 1;
+        const styrkeScore = (Math.random() * 4) + 1;
+        const totalScore = (balanceScore + funktionScore + styrkeScore) / 3;
+
+        return {
+            protocolId: 'seniorfitness',
+            date: new Date().toISOString().split('T')[0],
+            result: {
+                total: totalScore,
+                balance: { score: balanceScore, summary: "Your balance can be significantly improved. Balance exercises reduce the risk of falls and increase confidence in daily activities." },
+                funktion: { score: funktionScore, summary: "Your functional capacity can be increased, especially in explosiveness and mobility. Strength and flexibility exercises will make everyday tasks easier." },
+                styrke: { score: styrkeScore, summary: "Muscle strength is acceptable but can be improved. Regular strength training will make daily activities easier." },
+                details: { 
+                    'Balance - both legs': { value: `${(Math.random() * 10 + 5).toFixed(2)} cm²`, diff: `${Math.floor(Math.random() * 40 + 10)}` },
+                    'Balance - one leg': { value: `L: ${Math.floor(Math.random()*50+20)}% | R: ${Math.floor(Math.random()*50+20)}%`, diff: `${Math.floor(Math.random() * 20 + 5)}` },
+                    'Balance - knee': { value: `L: ${Math.floor(Math.random()*20+70)}% | R: ${Math.floor(Math.random()*20+70)}%`, diff: `${Math.floor(Math.random() * 20 + 75)}` },
+                    'Balance - ankle': { value: `L: ${Math.floor(Math.random()*20+50)}% | R: ${Math.floor(Math.random()*20+50)}%`, diff: `${Math.floor(Math.random() * 30 + 50)}` },
+                    'Jump': { value: `${Math.floor(Math.random() * 20 + 10)} cm`, diff: `${Math.floor(Math.random() * 30 + 20)}` },
+                    'Squat - velocity': { value: `${(Math.random() * 0.5 + 0.5).toFixed(2)} m/s`, diff: `${Math.floor(Math.random() * 20 + 10)}` },
+                    'Squat - depth': { value: `${Math.floor(Math.random() * 15 + 25)} cm`, diff: `${Math.floor(Math.random() * 40 + 30)}` },
+                    'Push-up': { value: `${(Math.random() * 4 + 2).toFixed(2)} N/kg`, diff: `${Math.floor(Math.random() * 30 + 60)}` },
+                    'IMTP': { value: `${Math.floor(Math.random() * 100 + 100)} kg`, diff: `${Math.floor(Math.random() * 20 + 70)}` },
+                    'IMTP - left': { value: `${Math.floor(Math.random() * 50 + 50)} kg`, diff: `${Math.floor(Math.random() * 30 + 40)}` },
+                    'IMTP - right': { value: `${Math.floor(Math.random() * 50 + 50)} kg`, diff: `${Math.floor(Math.random() * 20 + 10)}` },
+                }
+            }
+        };
+    }
+    function generateReturnToPlayResult() {
+        const createCategory = (name, testName, injuredVal, healthyVal, diffVal, unit) => {
+            const recovery = (state.returnToPlaySettings?.testType === 'Rehab' ? Math.round((injuredVal / healthyVal) * 100) : 100) || 100;
+            return {
+                name,
+                testName,
+                recovery,
+                passed: recovery >= 90,
+                diff: `${diffVal}${unit ? ` ${unit}`: ''}`,
+                unit: unit,
+                details: { 
+                    l: state.returnToPlaySettings?.injuredLimb === 'Left' ? injuredVal : healthyVal, 
+                    r: state.returnToPlaySettings?.injuredLimb === 'Right' ? injuredVal : healthyVal, 
+                    injured: state.returnToPlaySettings?.injuredLimb || null 
+                }
+            };
+        };
+
+        const categories = [
+            createCategory('Maximum Power', 'CMJ maximal', 17 + Math.floor(Math.random() * 5), 23 + Math.floor(Math.random() * 5), 6, 'cm'),
+            createCategory('Endurance & Landing Control', 'CMJ repeated', 335 + Math.floor(Math.random() * 10), 345 + Math.floor(Math.random() * 10), 10, 'cm'),
+            createCategory('Limb Stiffness', 'Reactive strength index', 0.27 + (Math.random() * 0.1), 0.34 + (Math.random() * 0.1), 0.07, ''),
+            createCategory('Lateral Stability', 'Side hop test', 40 + Math.floor(Math.random() * 5), 45 + Math.floor(Math.random() * 5), 5, '')
+        ];
+        
+        const overallRecovery = Math.round(categories.reduce((acc, cat) => acc + cat.recovery, 0) / categories.length);
+
+        return {
+            protocolId: 'returntoplay',
+            date: new Date().toISOString().split('T')[0],
+            result: {
+                overall: { recoveryPercentage: overallRecovery },
+                categories: categories,
+                testType: state.returnToPlaySettings?.testType || 'Baseline'
+            },
+            details: {}
+        };
+    }
+
+    function generateShoulderScreeningResult() {
+        const createTestResult = (name) => {
+            const leftMaxForce = Math.floor(100 + Math.random() * 50);
+            const rightMaxForce = leftMaxForce * (0.8 + Math.random() * 0.4);
+            const leftRfd = Math.floor(300 + Math.random() * 100);
+            const rightRfd = leftRfd * (0.8 + Math.random() * 0.4);
+            const leftMax100 = Math.floor(25 + Math.random() * 15);
+            const rightMax100 = leftMax100 * (0.8 + Math.random() * 0.4);
+
+            return {
+                name: name,
+                asymmetry: {
+                    maxForce: Math.round(((rightMaxForce - leftMaxForce) / leftMaxForce) * 100),
+                    rfd: Math.round(((rightRfd - leftRfd) / leftRfd) * 100),
+                    max100: Math.round(((rightMax100 - leftMax100) / leftMax100) * 100),
+                },
+                values: {
+                    left: { maxForce: leftMaxForce, rfd: leftRfd, max100: leftMax100 },
+                    right: { maxForce: rightMaxForce.toFixed(0), rfd: rightRfd.toFixed(0), max100: rightMax100.toFixed(1) },
+                },
+                normative: {
+                    left: (1.2 + Math.random() * 0.6).toFixed(2),
+                    right: (1.2 + Math.random() * 0.6).toFixed(2),
+                    avg: 1.45
+                }
+            };
+        };
+
+        return {
+            protocolId: 'shouldertest',
+            date: new Date().toISOString().split('T')[0],
+            result: {
+                tests: [
+                    createTestResult('Position I'),
+                    createTestResult('Position Y'),
+                    createTestResult('Position T'),
+                ]
+            },
+            details: {}
+        };
+    }
+
+    function handleTestControl(action) {
+        const progress = state.testProgress;
+        const protocol = mockData.protocols.find(p => p.id === state.activeProtocol);
+        if (!protocol) return;
+
+        // Fitness Age Special Flow
+        if (state.activeProtocol === 'fitnessage') {
+            if (action === 'start' && progress.currentTest === 'Pull') {
+                state.fitnessAgeFlowState = 'pulling';
+                progress.phase = 'active';
+                render();
+                updateTvScreen('fullscreen-video', { 
+                    src: 'https://storage.googleapis.com/files_webpage/Exercise%20videos/Pull%201080x1920.mp4'
+                });
+                const player = document.getElementById('fullscreen-video-player');
+                setTimeout(() => {
+                    player.pause();
+                    simulateTestResult();
+                }, 14000);
+                return;
+            }
+             if (action === 'next_test' && progress.currentTest === 'Pull') {
+                progress.step++;
+                progress.phase = 'ready';
+                progress.lastResult = null;
+                progress.attempts = []; 
+                progress.currentTest = protocol.tests[progress.step]; // Should be 'Jump'
+                state.fitnessAgeFlowState = 'jumpInstruction';
+                
+                updateTvScreen('fullscreen-video', { 
+                    src: 'https://storage.googleapis.com/files_webpage/Instruction%20video%20(demo)/Jump.mp4',
+                    loop: true 
+                });
+                render();
+                return;
+            }
+            if (action === 'start' && progress.currentTest === 'Jump') {
+                state.fitnessAgeFlowState = 'jumping';
+                progress.phase = 'active';
+                render();
+                
+                updateTvScreen('fullscreen-video', { 
+                    src: 'https://storage.googleapis.com/files_webpage/Exercise%20videos/Jump%201080x1920.mp4'
+                });
+                const player = document.getElementById('fullscreen-video-player');
+                setTimeout(() => {
+                    player.pause();
+                    simulateTestResult();
+                }, 20000);
+                return;
+            }
+             if (action === 'next_test' && progress.currentTest === 'Jump') {
+                progress.step++;
+                progress.phase = 'ready';
+                progress.lastResult = null;
+                progress.attempts = []; 
+                progress.currentTest = protocol.tests[progress.step]; // Should be 'Balance Right'
+                state.fitnessAgeFlowState = 'shoesOffConfirmation';
+                
+                updateTvScreen('fullscreen-video', { 
+                    src: 'https://storage.googleapis.com/files_webpage/Instruction%20video%20(demo)/Take%20off%20shoes.mp4',
+                    loop: true 
+                });
+                render();
+                return;
+            }
+            if (action === 'start' && progress.currentTest.includes('Balance')) {
+                 state.fitnessAgeFlowState = progress.currentTest === 'Balance Right' ? 'balancingRight' : 'balancingLeft';
+                 progress.phase = 'active';
+                 render();
+                 updateTvScreen('fullscreen-video', {
+                     src: TV_ASSETS[progress.currentTest].test
+                 });
+                 const player = document.getElementById('fullscreen-video-player');
+                 setTimeout(() => {
+                    player.pause();
+                    simulateTestResult();
+                 }, 15000);
+                 return;
+            }
+             if (action === 'next_test' && progress.currentTest === 'Balance Right') {
+                progress.step++;
+                progress.phase = 'ready';
+                progress.lastResult = null;
+                progress.attempts = []; 
+                progress.currentTest = protocol.tests[progress.step]; // Should be 'Balance Left'
+                state.fitnessAgeFlowState = 'balanceLeftInstruction';
+                
+                updateTvScreen('fullscreen-video', { 
+                    src: TV_ASSETS['Balance Left'].instruction,
+                    loop: true 
+                });
+                render();
+                return;
+            }
+        }
+        
+        switch(action) {
+            case 'start':
+                progress.phase = 'active';
+                progress.lastResult = null;
+                updateTvScreen('testing', { testName: progress.currentTest });
+                render(); 
+                setTimeout(() => {
+                    simulateTestResult();
+                }, 2000);
+                break;
+            case 'abort':
+                if (progress.phase === 'active') {
+                    progress.phase = 'ready';
+                    updateTvScreen('instruction', { testName: progress.currentTest });
+                    render();
+                }
+                break;
+            case 'next_test':
+                if (progress.phase === 'result') {
+                    const anyChecked = document.querySelector('#coachMode-view input[name="attempt"]:checked');
+                    if (!anyChecked && progress.attempts.length > 0) {
+                        showToast('Please select at least one attempt to save.', 'error');
+                        return;
+                    }
+                }
+
+                if (progress.step < progress.totalSteps - 1) {
+                    progress.step++;
+                    progress.phase = 'ready';
+                    progress.lastResult = null;
+                    progress.attempts = []; 
+                    progress.currentTest = protocol.tests[progress.step];
+                    updateTvScreen('instruction', { testName: progress.currentTest });
+                    render();
+                } else {
+                    let newHistoryEntry = null;
+                    if (state.activeProtocol === 'fitnessage') {
+                        const pull = Math.floor(70 + Math.random() * 171);
+                        const jump = Math.floor(11 + Math.random() * 45);
+                        const balance = Math.floor(30 + Math.random() * 66);
+                        const fitnessAge = Math.max(18, Math.round(60 - (pull / 20) - (jump / 10) - (balance / 10)));
+                        const date = new Date().toISOString().split('T')[0];
+
+                        newHistoryEntry = {
+                            protocolId: 'fitnessage',
+                            date: date,
+                            result: { fitnessAge },
+                            details: {
+                                Pull: pull.toFixed(1),
+                                Jump: jump,
+                                Balance: balance,
+                            }
+                        };
+                    } else if (state.activeProtocol === 'seniorfitness') {
+                        newHistoryEntry = generateSeniorFitnessResult();
+                    } else if (state.activeProtocol === 'returntoplay') {
+                        newHistoryEntry = generateReturnToPlayResult();
+                    } else if (state.activeProtocol === 'shouldertest') {
+                        newHistoryEntry = generateShoulderScreeningResult();
+                    }
+
+
+                    if (state.selectedClient) {
+                        if (newHistoryEntry) {
+                            if (!state.selectedClient.history) {
+                                state.selectedClient.history = [];
+                            }
+                            state.selectedClient.history.push(newHistoryEntry);
+                        }
+                    } else {
+                        state.lastSessionResult = newHistoryEntry;
+                    }
+                    navigate('results');
+                }
+                break;
+            case 'prev_test':
+                if (progress.step > 0) {
+                    progress.step--;
+                    progress.phase = 'ready';
+                    progress.lastResult = null;
+                    progress.attempts = []; 
+                    progress.currentTest = protocol.tests[progress.step];
+                    updateTvScreen('instruction', { testName: progress.currentTest });
+                    render();
+                } else {
+                    if (state.activeProtocol === 'returntoplay') {
+                        navigate('returntoplay-input');
+                    } else if (state.activeProtocol === 'shouldertest') {
+                        navigate('shouldertest-input');
+                    }
+                    else {
+                        navigate('protocols');
+                    }
+                     document.getElementById('tv-container').classList.remove('protocol-started');
+                    state.fitnessAgeFlowState = 'idle';
+                    updateTvScreen('idle');
+                }
+                break;
+        }
+    }
+    
+    function validateNextTestButton() {
+        const nextBtn = document.getElementById('next-test-btn');
+        if (!nextBtn) return;
+
+        if (state.testProgress.phase === 'active') {
+            nextBtn.disabled = true;
+            nextBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            return;
+        }
+
+        const anyChecked = document.querySelector('#coachMode-view input[name="attempt"]:checked');
+        const hasAttempts = state.testProgress.attempts.length > 0;
+        
+        const enabled = !hasAttempts || anyChecked;
+        nextBtn.disabled = !enabled;
+
+        if (enabled) {
+            nextBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+        } else {
+            nextBtn.classList.add('opacity-50', 'cursor-not-allowed');
+        }
+    }
+
+    function toggleAllAttempts(checked) {
+        document.querySelectorAll('#coachMode-view input[name="attempt"]').forEach(checkbox => {
+            checkbox.checked = checked;
+        });
+        validateNextTestButton();
+    }
+
+    function handleCreateAndLinkClient() {
+        const phoneInput = document.getElementById('add-client-phone').value.replace(/\s/g, '');
+        const phone = '47' + phoneInput;
+        const age = document.getElementById('add-client-age').value;
+        const genderEl = document.querySelector('#gender-selector .selected');
+        const gender = genderEl ? genderEl.dataset.gender : null;
+
+
+        if (!phoneInput || !age || !gender) {
+            showToast('Please fill out all fields.', 'error');
+            return;
+        }
+
+        const newClient = {
+            name: phoneInput,
+            history: [],
+            age: age,
+            gender: gender,
+            phone: phone
+        };
+
+        mockData.clients[phone] = newClient;
+        state.selectedClient = newClient;
+        state.consentGiven = true;
+        
+        if (state.lastSessionResult && state.currentView === 'results') {
+            if (!state.selectedClient.history) {
+                state.selectedClient.history = [];
+            }
+            state.selectedClient.history.push(state.lastSessionResult);
+            state.lastSessionResult = null;
+            render();
+        }
+        
+        updateTvScreen('client-linked');
+        
+        console.log(`Creating and linking new client:`, newClient);
+        closeAddClientModal();
+        showToast(`${newClient.name} has been created and linked to the session.`);
+    }
+
+    function handleSendSummary() {
+        if (state.selectedClient) {
+            showToast(`Summary sent to ${state.selectedClient.name}.`);
+        } else {
+            openLinkClientModal();
+        }
+    }
+    
+    function validateNewClientForm() {
+        const addClientModal = document.getElementById('add-client-modal');
+        const createAndLinkBtn = document.getElementById('create-and-link-btn');
+        const selectedGender = addClientModal.querySelector('.gender-btn.selected');
+        const age = document.getElementById('add-client-age').value;
+        const phone = document.getElementById('add-client-phone').value;
+
+        if (selectedGender && age.trim() !== '' && phone.trim() !== '') {
+            createAndLinkBtn.disabled = false;
+            createAndLinkBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+        } else {
+            createAndLinkBtn.disabled = true;
+            createAndLinkBtn.classList.add('opacity-50', 'cursor-not-allowed');
+        }
+    }
+    
+    function runCalibrationAnimation(duration = 3700, onComplete) {
+        const pieChart = document.getElementById('pie-chart');
+        const dotAnimationElement = document.getElementById('dot-animation');
+        const progressText = document.getElementById('progress-text');
+
+        if (!pieChart || !dotAnimationElement || !progressText) {
+            console.error("Calibration elements not found!");
+            if(onComplete) onComplete(); // Fail gracefully
+            return;
+        }
+
+        let startTime = null;
+        let dotInterval = null;
+        const dotCycleInterval = 500;
+        const fillColor = '#FBC02D';
+        const emptyColor = '#2D2D2D';
+        const dots = ["", ".", "..", "..."];
+        let dotIndex = 0;
+
+        function updateDots() {
+            if (dotAnimationElement) {
+                dotAnimationElement.textContent = dots[dotIndex];
+                dotIndex = (dotIndex + 1) % dots.length;
+            }
+        }
+
+        if (dotInterval) clearInterval(dotInterval);
+        updateDots();
+        dotInterval = setInterval(updateDots, dotCycleInterval);
+
+        function animate(currentTime) {
+            if (startTime === null) startTime = currentTime;
+            const elapsedTime = currentTime - startTime;
+            const progress = Math.min(elapsedTime / duration, 1);
+            const degrees = progress * 360;
+
+            pieChart.style.background = `conic-gradient(${fillColor} 0deg, ${fillColor} ${degrees}deg, ${emptyColor} ${degrees}deg, ${emptyColor} 360deg)`;
+            
+            const percent = Math.floor(progress * 100);
+            progressText.textContent = `${percent}% complete`;
+
+            if (progress < 1) {
+                requestAnimationFrame(animate);
+            } else {
+                clearInterval(dotInterval);
+                if (dotAnimationElement) dotAnimationElement.textContent = "...";
+                if(onComplete) onComplete();
+            }
+        }
+
+        requestAnimationFrame(animate);
+    }
+
+
+    // --- INITIALIZATION ---
+    function setupEventListeners() {
+        
+        document.getElementById('modal-client-search-input').addEventListener('input', (e) => searchClients(e, 'modal-client-search-results'));
+        
+        document.getElementById('nav-protocols').onclick = () => navigate('protocols');
+        document.getElementById('nav-remote').onclick = () => navigate('remote');
+        document.getElementById('nav-clients').onclick = () => navigate('clients');
+        
+        document.getElementById('link-client-backdrop').onclick = closeLinkClientModal;
+        
+        document.getElementById('create-and-link-btn').onclick = handleCreateAndLinkClient;
+        document.getElementById('toast-dismiss-btn').onclick = hideToast;
+
+        document.getElementById('history-backdrop').onclick = closeHistoryModal;
+
+        document.getElementById('confirmation-confirm-btn').onclick = () => {
+            const callback = state.confirmationModal.onConfirm;
+            closeConfirmationModal();
+            if (typeof callback === 'function') {
+                callback();
+            }
+        };
+        document.getElementById('confirmation-cancel-btn').onclick = closeConfirmationModal;
+
+
+        const addClientModal = document.getElementById('add-client-modal');
+        addClientModal.querySelectorAll('.gender-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                addClientModal.querySelectorAll('.gender-btn').forEach(b => b.classList.remove('selected'));
+                btn.classList.add('selected');
+                validateNewClientForm();
+            });
+        });
+        
+        document.getElementById('add-client-age').addEventListener('input', validateNewClientForm);
+        document.getElementById('add-client-phone').addEventListener('input', validateNewClientForm);
+        
+        document.getElementById('app-container').addEventListener('click', (e) => {
+            if (e.target.closest('.burger-menu-btn')) {
+                e.stopPropagation();
+                state.burgerMenuOpen = !state.burgerMenuOpen;
+                render();
+            }
+        });
+
+        document.getElementById('burger-menu-backdrop').onclick = () => { if (state.burgerMenuOpen) { state.burgerMenuOpen = false; render(); } };
+
+        let hasWokenUpPhone = false;
+        let qrHideTimer = null;
+        const tvContainer = document.getElementById('tv-container');
+        const phoneContainer = document.getElementById('phone-container');
+        
+        tvContainer.addEventListener('mouseenter', () => {
+            if (state.fitnessAgeFlowState === 'stepOn') {
+                 state.fitnessAgeFlowState = 'calibrating';
+                 updateTvScreen('calibration');
+            } else if (state.fitnessAgeFlowState === 'idle') {
+                tvContainer.classList.add('is-showing-qr');
+                if (qrHideTimer) clearTimeout(qrHideTimer);
+                qrHideTimer = setTimeout(() => {
+                    tvContainer.classList.remove('is-showing-qr');
+                }, 20000);
+            }
+
+            if (!hasWokenUpPhone) {
+                hasWokenUpPhone = true;
+                setTimeout(() => {
+                    phoneContainer.classList.remove('asleep');
+                    phoneContainer.classList.add('awake');
+                    render();
+                }, 3000);
+            }
+        });
+
+    }
+    
+    function setupTabListeners() {
+        document.querySelectorAll('#results-view .results-card').forEach(card => {
+            const summary = card.querySelector('summary');
+            const detailsElement = card;
+
+            summary.addEventListener('click', (e) => {
+                e.preventDefault();
+                detailsElement.open = !detailsElement.open;
+
+                if (detailsElement.open) {
+                    const resultTab = detailsElement.querySelector('.tab-btn[data-target^="result-"]');
+                    if (resultTab) resultTab.click();
+                }
+            });
+
+            detailsElement.querySelectorAll('.tab-btn').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    e.stopPropagation(); 
+                    const parentDetails = button.closest('details');
+                    if(!parentDetails) return;
+
+                    const targetId = button.dataset.target;
+                    const protocol = parentDetails.dataset.protocol;
+                    const categoryName = parentDetails.dataset.category;
+
+                    parentDetails.querySelectorAll('.tab-btn').forEach(btn => {
+                        btn.classList.remove('active', 'text-white', 'border-emerald-500');
+                        btn.classList.add('text-gray-400', 'border-transparent');
+                    });
+                    button.classList.add('active', 'text-white', 'border-emerald-500');
+                    button.classList.remove('text-gray-400', 'border-transparent');
+
+                    parentDetails.querySelectorAll('.tab-content').forEach(content => {
+                        content.classList.add('hidden');
+                        content.classList.remove('active');
+                    });
+                    const targetContent = document.getElementById(targetId);
+                    if (targetContent) {
+                        targetContent.classList.remove('hidden');
+                        targetContent.classList.add('active');
+                    }
+
+                    if (targetId.startsWith('history-')) {
+                        if (protocol === 'returntoplay') {
+                            const canvasId = `chart-rtp-${categoryName.replace(/\s+/g, '-')}`;
+                            renderRtpHistoryChart(categoryName, canvasId);
+                        } else if (protocol === 'shouldertest') {
+                            const canvasId = `chart-shoulder-${categoryName.replace(/\s+/g, '-')}`;
+                            renderShoulderHistoryChart(categoryName, canvasId);
+                        }
+                    }
+                });
+            });
+        });
+    }
+
+
+    document.addEventListener('DOMContentLoaded', () => {
+        setupEventListeners();
+        render(); // This will now run, but the asleep class will hide the UI.
+    });
+    </script>
+</body>
+</html>
+
