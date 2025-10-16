@@ -2698,6 +2698,12 @@
         } else {
             state.currentView = view;
         }
+
+        if (view === 'results') {
+             const protocolId = state.activeProtocol || state.selectedClient?.history.slice(-1)[0]?.protocolId;
+             const resultData = state.lastSessionResult || state.selectedClient?.history.slice(-1)[0];
+             updateTvScreen('summary', { protocolId: protocolId, result: resultData });
+        }
         render();
     }
     
@@ -3433,4 +3439,6 @@
     </script>
 </body>
 </html>
+
+
 
